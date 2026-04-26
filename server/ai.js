@@ -47,10 +47,12 @@ export const ingestDocument = async (projectId, filePath) => {
     const storePath = path.join(VECTOR_STORE_DIR, `project_${projectId}`);
     let vectorStore;
     
-    if (fs.existsSync(storePath)) {
+    if (fs.existsSync(path.join(storePath, 'args.json'))) {
+      // אם כבר יש לנו זיכרון לפרויקט הזה (כלומר קובץ ההגדרות קיים), נטען אותו ונוסיף אליו
       vectorStore = await HNSWLib.load(storePath, embeddings);
       await vectorStore.addDocuments(docs);
     } else {
+      // אם אין עדיין זיכרון, נייצר אחד חדש מאפס
       vectorStore = await HNSWLib.fromDocuments(docs, embeddings);
     }
     
@@ -68,10 +70,11 @@ export const askQuestion = async (projectId, question) => {
   try {
     const storePath = path.join(VECTOR_STORE_DIR, `project_${projectId}`);
     
-    if (!fs.existsSync(storePath)) {
+    if (!fs.existsSync(path.join(storePath, 'args.json'))) {
       return "לא נמצאו מסמכים שנסרקו לפרויקט זה. אנא העלה מסמכים תחילה.";
     }
 
+    // טוען את הזיכרון הקיים של הפרויקט
     const vectorStore = await HNSWLib.load(storePath, embeddings);
     const retriever = vectorStore.asRetriever(4); // Get top 4 most relevant chunks
     
