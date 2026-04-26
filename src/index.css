@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #57B9C1;
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f1f5f9;
+  --color-border: #e2e8f0;
+  
+  /* Status Colors */
+  --color-status-ok: #10b981;       /* Green */
+  --color-status-warning: #f59e0b;  /* Yellow */
+  --color-status-danger: #ef4444;   /* Red */
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  
+  body {
+    @apply bg-background text-text-primary;
+    direction: rtl;
+    font-family: 'Assistant', system-ui, -apple-system, sans-serif;
+  }
+}
