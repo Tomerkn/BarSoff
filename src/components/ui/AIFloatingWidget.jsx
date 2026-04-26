@@ -5,12 +5,13 @@ import { ProjectChat } from './ProjectChat';
 
 export function AIFloatingWidget({ projectId }) {
   const [isOpen, setIsOpen] = useState(false);
+  const nodeRef = React.useRef(null);
 
   if (!projectId) return null;
 
   return (
-    <Draggable handle=".drag-handle" bounds="parent">
-      <div className="fixed bottom-6 left-6 z-50 flex flex-col items-start">
+    <Draggable nodeRef={nodeRef} handle=".drag-handle" bounds="parent">
+      <div ref={nodeRef} className="fixed bottom-6 left-6 z-50 flex flex-col items-start">
         
         {/* Chat Window */}
         {isOpen && (
