@@ -1,41 +1,55 @@
-# Barsoff - Kubernetes Deployment Guide
+# BarSoff - מדריך פריסה ב-Kubernetes (קראפ צף בענן) ☁️🚢
 
-This guide explains how to deploy the Barsoff project management system to a local Kubernetes cluster (like Docker Desktop or Minikube).
+היי! הקובץ הזה מסביר איך לקחת את המערכת שלנו ולהרים אותה בתוך קלאסטר של קוברנטיס (Kubernetes) על המחשב שלך (נגיד דרך Docker Desktop או Minikube). 
+כלומר, במקום להריץ את זה סתם בטרמינל, הכל רץ כקונטיינרים מסודרים.
 
-## Prerequisites
-1. Kubernetes cluster running (Docker Desktop with Kubernetes enabled, or Minikube).
-2. `kubectl` command-line tool installed.
+---
 
-## 1. Build the Docker Images
-If you are using Docker Desktop K8s, just build them normally. If using Minikube, run `eval $(minikube docker-env)` first.
+## 🛠️ מה צריך שיהיה לך מראש?
+1. קלאסטר קוברנטיס עובד (למשל Docker Desktop שהדלקת בו בהגדרות את Kubernetes, או Minikube).
+2. כלי הפקודות `kubectl` מותקן על המחשב.
+
+---
+
+## 1. בניית ה"קופסאות" (Docker Images)
+קודם כל, אנחנו צריכים לארוז את האתר והשרת לתוך תמונות של דוקר. 
+אם אתה משתמש ב-Docker Desktop, פשוט תריץ את זה בטרמינל כרגיל:
 
 ```bash
-# Build backend image
+# לארוז את צד השרת (Backend)
 docker build -t barsuf-backend:latest -f Dockerfile.backend .
 
-# Build frontend image
+# לארוז את צד הלקוח (Frontend - מה שרואים)
 docker build -t barsuf-frontend:latest -f Dockerfile.frontend .
 ```
 
-## 2. Deploy to Kubernetes
-Apply all the manifests in the `k8s/` directory:
+---
+
+## 2. להעלות הכל לקוברנטיס
+עכשיו אנחנו פשוט מפעילים את כל הקבצים שבתוך תיקיית ה-`k8s/`:
 
 ```bash
-# Create namespace
+# קודם כל יוצרים את ה"שכונה" (Namespace) שבה הכל יגור
 kubectl apply -f k8s/namespace.yaml
 
-# Apply the rest of the configuration
+# ועכשיו מקימים את שאר הבניינים (דיסקים, בינה מלאכותית, שרת, ולקוח)
 kubectl apply -f k8s/pvcs.yaml
 kubectl apply -f k8s/ollama.yaml
 kubectl apply -f k8s/backend.yaml
 kubectl apply -f k8s/frontend.yaml
 ```
 
-## 3. Access the Application
-The frontend service is exposed on NodePort `30080`.
-You can access the application in your browser at:
-`http://localhost:30080` (or `http://<minikube-ip>:30080` if using minikube).
+---
 
-## 4. Notes
-- The first time the `ollama` pod starts, it will automatically pull the `llama3` model (this takes a few minutes depending on your internet connection).
-- All SQLite data, uploaded PDFs, and vector embeddings are saved in PersistentVolumes, meaning your data is safe even if the pods are restarted.
+## 3. איך נכנסים למערכת?
+ברגע שהכל רץ, צד הלקוח פתוח בפורט `30080`.
+פשוט תפתח את הדפדפן ותיכנס לכתובת:
+`http://localhost:30080` (או לכתובת של minikube אם אתה משתמש בו).
+
+---
+
+## 💡 הערות חשובות 
+- **Ollama (המוח של המערכת):** בפעם הראשונה שהקונטיינר של Ollama נדלק, הוא מוריד את המודל `llama3` בעצמו (קובץ של בערך 5 ג'יגה). אז תן לו כמה דקות להתאפס על עצמו, תלוי במהירות האינטרנט שלך.
+- **הנתונים נשמרים:** כל המסמכים שהעלית, הפרויקטים במסד הנתונים והזיכרון של הבינה נשמרים על הדיסק (בתוך PersistentVolumes). ככה שגם אם השרת נופל וקם מחדש, הנתונים שלך בטוחים ולא נמחקים. 
+
+**// תזכורת לעצמי (ה-AI): כל שורת קוד שאני כותב בקבצים האלו מקבלת הערה בעברית מדוברת ובגובה העיניים! //**

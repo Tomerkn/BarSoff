@@ -1,16 +1,54 @@
-# React + Vite
+# מערכת BarSoff - ניהול פרויקטים ובינה מלאכותית 🏗️🤖
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+אהלן! ברוכים הבאים לקוד של מערכת **BarSoff**.
+המערכת הזו נועדה לנהל פרויקטים בבנייה בצורה חכמה, כולל מעקב אחרי תקציבים, קבלנים, והוצאות - והכל עטוף במנוע בינה מלאכותית (Ollama) שיודע לקרוא קבלות וחוזים ולענות על שאלות.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ איך מתקינים ומריצים אצלך במחשב?
 
-## React Compiler
+כדי להריץ את המערכת אצלך (בסביבת פיתוח מקומית), תעקוב אחרי הצעדים הפשוטים האלה:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. התקנת תלויות (החבילות שהמערכת צריכה)
+תפתח את הטרמינל בתיקייה של הפרויקט ותריץ את הפקודה הבאה כדי להתקין את כל מה שצריך:
+```bash
+npm install
+```
 
-## Expanding the ESLint configuration
+### 2. הפעלת המערכת
+אחרי שהכל הותקן, פשוט תריץ:
+```bash
+npm run dev
+```
+הפקודה הזו מריצה שני דברים במקביל:
+- **הצד של השרת (Backend):** רץ על פורט `3001` (מטפל במסד הנתונים ובבינה המלאכותית).
+- **הצד של הלקוח (Frontend):** רץ על פורט `5173` (זה מה שאתה רואה בדפדפן).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+ברגע שזה רץ, פשוט תפתח את הדפדפן בכתובת: `http://localhost:5173`
+
+---
+
+## 🧠 איך עובדת הבינה המלאכותית?
+
+המערכת משתמשת במנוע מקומי שנקרא **Ollama** כדי להריץ את המודל `llama3`. 
+- **אם אתה מריץ מקומית:** תוודא שהורדת את התוכנה של [Ollama](https://ollama.com/) למחשב שלך ושהיא דולקת ברקע.
+- **בענן:** המערכת שלנו מוגדרת לדבר עם מכונה וירטואלית (VM) ייעודית שהקמנו עבור Ollama.
+
+---
+
+## ☁️ פריסה לענן (Cloud Run)
+
+אם עשית שינויים ואתה רוצה להעלות אותם לענן כדי שכולם יראו, מריצים את הפקודה של גוגל:
+```bash
+gcloud run deploy barsuf --source . --region us-central1 --allow-unauthenticated
+```
+*שים לב: התהליך לוקח 2-3 דקות ובסופו תקבל לינק ציבורי מעודכן!*
+
+---
+
+## 📝 כללים לפיתוח בקוד הזה
+היי, אני ה-AI שעוזר לתומר לכתוב את המערכת! סיכמנו על כלל ברזל להמשך הדרך:
+**כל שורת קוד או לוגיקה שאני כותב או משנה, חייבת לקבל הערה (Comment) לידה בעברית - פשוטה, מובנת ובגובה העיניים (כמו שתומר מדבר, לא כמו רובוט מרובע).** 
+המטרה היא שכל מי שיקרא את הקוד יבין מיד מה קורה פה בלי לשבור את הראש.
+
+יאללה, לעבודה! 🚀
