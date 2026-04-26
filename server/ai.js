@@ -9,22 +9,25 @@ import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 
-const VECTOR_STORE_DIR = path.join(process.cwd(), 'server', 'vectorstores');
+const VECTOR_STORE_DIR = path.join(process.cwd(), 'server', 'data', 'vectorstores');
 
 // Ensure directory exists
 if (!fs.existsSync(VECTOR_STORE_DIR)) {
   fs.mkdirSync(VECTOR_STORE_DIR, { recursive: true });
 }
 
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+
 // Initialize Ollama embeddings and LLM
-// We assume Ollama is running locally on default port 11434 with llama3
 const embeddings = new OllamaEmbeddings({
-  model: 'llama3', // You can change this to nomic-embed-text if preferred and available
+  model: 'llama3',
+  baseUrl: OLLAMA_BASE_URL,
 });
 
 const model = new Ollama({
   model: 'llama3',
   temperature: 0.1,
+  baseUrl: OLLAMA_BASE_URL,
 });
 
 export const ingestDocument = async (projectId, filePath) => {

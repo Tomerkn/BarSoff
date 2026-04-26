@@ -53,14 +53,16 @@ export function ProjectChat({ projectId }) {
         method: 'POST',
         body: formData,
       });
-      
-      if (!response.ok) throw new Error('Upload failed');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Upload failed');
+      }
       
       await fetchFiles();
       setMessages(prev => [...prev, { id: Date.now(), type: 'system', text: `הקובץ ${file.name} הועלה ועובד בהצלחה. כעת ניתן לשאול עליו שאלות.` }]);
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('שגיאה בהעלאת הקובץ');
+      alert(`שגיאה בהעלאת הקובץ:\n${error.message}`);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

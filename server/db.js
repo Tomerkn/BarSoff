@@ -4,9 +4,13 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbPath = join(__dirname, 'barsuf.db');
+const dataDir = join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const dbPath = join(dataDir, 'barsuf.db');
 
-const db = new Database(dbPath, { verbose: console.log });
+const db = new Database(dbPath);
 
 // Initialize schema
 function initDB() {

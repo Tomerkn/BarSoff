@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Setup uploads directory
-const UPLOADS_DIR = path.join(process.cwd(), 'server', 'uploads');
+const UPLOADS_DIR = path.join(process.cwd(), 'server', 'data', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
@@ -176,7 +176,10 @@ app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => {
     res.status(201).json({ success: true, message: 'File uploaded and processed' });
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ error: 'Failed to process file' });
+    if (error.cause && error.cause.code === 'ECONNREFUSED') {
+      return res.status(503).json({ error: 'Ollama is not running. Please start the Ollama application.' });
+    }
+    res.status(500).json({ error: 'Failed to process file. Make sure Ollama is running and model llama3 is installed.' });
   }
 });
 
