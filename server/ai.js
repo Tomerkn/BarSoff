@@ -1,9 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
-
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { OllamaEmbeddings } from '@langchain/ollama';
 import { HNSWLib } from '@langchain/community/vectorstores/hnswlib';
@@ -11,6 +7,7 @@ import { Ollama } from '@langchain/ollama';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
+import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 
 const VECTOR_STORE_DIR = path.join(process.cwd(), 'server', 'vectorstores');
 
@@ -32,17 +29,16 @@ const model = new Ollama({
 
 export const ingestDocument = async (projectId, filePath) => {
   try {
-    // 1. Read PDF
-    const dataBuffer = fs.readFileSync(filePath);
-    const data = await pdfParse(dataBuffer);
-    const text = data.text;
+    // 1. Load PDF
+    const loader = new PDFLoader(filePath);
+    const rawDocs = await loader.load();
 
     // 2. Split text
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
       chunkOverlap: 200,
     });
-    const docs = await textSplitter.createDocuments([text], [{ source: filePath }]);
+    const docs = await textSplitter.splitDocuments(rawDocs);
 
     // 3. Create or load vector store
     const storePath = path.join(VECTOR_STORE_DIR, `project_${projectId}`);
