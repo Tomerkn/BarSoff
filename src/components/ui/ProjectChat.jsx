@@ -96,7 +96,7 @@ export function ProjectChat({ projectId }) {
   };
 
   return (
-    <div className="flex flex-col h-[600px] bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+    <div className="flex flex-col h-full bg-surface overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-surface-hover/30">
         <div className="flex items-center gap-3">

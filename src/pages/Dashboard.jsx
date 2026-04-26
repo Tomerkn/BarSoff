@@ -4,7 +4,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { api } from '../services/api';
-import { ProjectChat } from '../components/ui/ProjectChat';
+import { AIFloatingWidget } from '../components/ui/AIFloatingWidget';
 
 const formatCurrency = (value) => {
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
@@ -170,12 +170,10 @@ export function Dashboard() {
             </ResponsiveContainer>
           </div>
         </div>
-
-        {/* AI Chat section */}
-        <div className="lg:col-span-1">
-          <ProjectChat projectId={selectedProjectId} />
-        </div>
       </div>
+
+      {/* Floating AI Widget */}
+      <AIFloatingWidget projectId={selectedProjectId} />
     </div>
   );
 }
