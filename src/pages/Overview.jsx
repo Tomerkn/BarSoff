@@ -1,22 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { KpiCard } from '../components/ui/KpiCard';
-import { Briefcase, Wallet, AlertTriangle, CheckCircle, Loader2, TrendingDown, ArrowUpRight, ShieldCheck } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import React, { useEffect, useState } from 'react'; // מביאים את הכלים של ריאקט
+import { Link } from 'react-router-dom'; // כלי למעבר בין דפים
+import { KpiCard } from '../components/ui/KpiCard'; // כרטיסי מידע עם מספרים גדולים
+import { Briefcase, Wallet, AlertTriangle, CheckCircle, Loader2, TrendingDown, ArrowUpRight, ShieldCheck } from 'lucide-react'; // אייקונים יפים
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'; // כלים לציור גרפים
 
-const formatCurrency = (value) => {
+const formatCurrency = (value) => { // פונקציה שהופכת מספר לסכום כספי בשקלים
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
 };
 
-export function Overview() {
-  const [analytics, setAnalytics] = useState(null);
-  const [projectsData, setProjectsData] = useState([]);
-  const [loading, setLoading] = useState(true);
+export function Overview() { // דף מבט-על ארגוני של כל החברה
+  const [analytics, setAnalytics] = useState(null); // כאן נשמור את הנתונים הכלליים של החברה
+  const [projectsData, setProjectsData] = useState([]); // כאן נשמור נתונים להשוואה בין פרויקטים
+  const [loading, setLoading] = useState(true); // האם אנחנו מחכים למידע מהשרת
 
-  useEffect(() => {
+  useEffect(() => { // מביאים את כל הנתונים ברגע שהדף עולה
     const fetchOverview = async () => {
       try {
-        const [globalRes, projectsRes] = await Promise.all([
+        const [globalRes, projectsRes] = await Promise.all([ // מבקשים מהשרת נתונים כלליים ורשימת פרויקטים
           fetch('/api/analytics/global'),
           fetch('/api/projects')
         ]);
@@ -26,7 +26,7 @@ export function Overview() {
         
         const pList = await projectsRes.json();
         
-        // Fetch specific analytics for top 5 active projects to show in a chart
+        // מביאים נתונים כספיים עבור 5 פרויקטים פעילים כדי להציג בגרף
         const activeProjects = pList.filter(p => p.status === 'תקין');
         const projectStats = await Promise.all(
           activeProjects.slice(0, 5).map(async (p) => {
@@ -45,13 +45,13 @@ export function Overview() {
       } catch (error) {
         console.error('Error fetching overview data:', error);
       } finally {
-        setLoading(false);
+        setLoading(false); // הפסקת מצב טעינה
       }
     };
     fetchOverview();
   }, []);
 
-  if (loading) {
+  if (loading) { // אם אנחנו בטעינה, מראים סמל מסתובב
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="w-8 h-8 animate-spin text-[var(--color-brand)]" />
@@ -61,12 +61,13 @@ export function Overview() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
+      {/* כותרת הדף */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary">דאשבורד מנהל ארגוני</h1>
         <p className="text-text-secondary text-sm">מבט-על ושליטה מלאה על כלל הפעילות של ברסוף</p>
       </div>
 
-      {/* Top Global KPIs */}
+      {/* כרטיסי מידע כלליים על כל החברה */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KpiCard 
           title="סה״כ פרויקטים (כללי)" 
@@ -93,7 +94,7 @@ export function Overview() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Chart */}
+        {/* גרף השוואה בין תקציב להוצאות בפועל לכלל הפרויקטים */}
         <div className="lg:col-span-2 bg-surface rounded-xl shadow-sm border border-border p-6">
           <h2 className="text-lg font-bold text-text-primary mb-6">תקציב מול ביצוע (5 הפרויקטים הפעילים הגדולים)</h2>
           <div className="h-72 w-full" dir="ltr">
@@ -114,7 +115,7 @@ export function Overview() {
           </div>
         </div>
 
-        {/* Quick Links / Alerts Panel */}
+        {/* פאנל התראות ופעולות דחופות */}
         <div className="bg-surface rounded-xl shadow-sm border border-border p-6 flex flex-col">
           <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-orange-500" />
@@ -139,6 +140,7 @@ export function Overview() {
             )}
           </div>
           
+          {/* כפתור מעבר מהיר לרשימת הפרויקטים */}
           <div className="mt-auto pt-4 border-t border-border">
             <Link to="/" className="w-full py-2.5 bg-surface-hover hover:bg-border text-text-primary rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors">
               מעבר לרשימת הפרויקטים

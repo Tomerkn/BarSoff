@@ -1,27 +1,27 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../services/api';
-import { Loader2, BarChart3, Download, FileText } from 'lucide-react';
-import { KpiCard } from '../components/ui/KpiCard';
+import React, { useEffect, useState } from 'react'; // מביאים את הכלים של ריאקט
+import { api } from '../services/api'; // השליח שמדבר עם השרת
+import { Loader2, BarChart3, Download, FileText } from 'lucide-react'; // אייקונים יפים
+import { KpiCard } from '../components/ui/KpiCard'; // כרטיסי מידע עם מספרים גדולים
 
-const formatCurrency = (value) => {
+const formatCurrency = (value) => { // פונקציה שהופכת מספר לסכום כספי בשקלים
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
 };
 
-export function Reports() {
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ totalBudget: 0, totalExpenses: 0, projectsCount: 0 });
+export function Reports() { // דף דוחות וסיכומי נתונים כלליים
+  const [loading, setLoading] = useState(true); // האם אנחנו מחכים למידע מהשרת
+  const [stats, setStats] = useState({ totalBudget: 0, totalExpenses: 0, projectsCount: 0 }); // כאן נשמור את הסיכומים הכלליים
 
-  useEffect(() => {
+  useEffect(() => { // מביאים את כל הנתונים ברגע שהדף עולה כדי לחשב סיכומים
     const fetchGlobalStats = async () => {
       try {
-        const [projects, budgets, expenses] = await Promise.all([
+        const [projects, budgets, expenses] = await Promise.all([ // מבקשים מהשרת את כל המידע הקיים במערכת
           api.getProjects(),
           api.getBudgets(),
           api.getExpenses()
         ]);
         
-        const totalBudget = budgets.reduce((acc, b) => acc + b.total_amount, 0);
-        const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+        const totalBudget = budgets.reduce((acc, b) => acc + b.total_amount, 0); // מחשבים את סך כל התקציבים
+        const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0); // מחשבים את סך כל ההוצאות
 
         setStats({
           totalBudget,
@@ -31,17 +31,18 @@ export function Reports() {
       } catch (error) {
         console.error(error);
       } finally {
-        setLoading(false);
+        setLoading(false); // הפסקת מצב טעינה
       }
     };
     
     fetchGlobalStats();
   }, []);
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>; // סמל טעינה
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      {/* כותרת הדף וכפתור ייצוא */}
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">דוחות וסטטיסטיקות</h1>
@@ -53,6 +54,7 @@ export function Reports() {
         </button>
       </div>
 
+      {/* כרטיסי סיכום כלליים */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <KpiCard 
           title="סה״כ פרויקטים פעילים" 
@@ -72,6 +74,7 @@ export function Reports() {
         />
       </div>
 
+      {/* הודעה על שדרוג עתידי של הדף */}
       <div className="bg-surface border border-border rounded-xl shadow-sm p-8 text-center flex flex-col items-center gap-4">
         <div className="w-16 h-16 rounded-full bg-[var(--color-brand)]/10 flex items-center justify-center text-[var(--color-brand)]">
           <FileText className="w-8 h-8" />

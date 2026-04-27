@@ -1,40 +1,39 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { KpiCard } from '../components/ui/KpiCard';
-import { ProgressBar } from '../components/ui/ProgressBar';
-import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2 } from 'lucide-react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
-import { api } from '../services/api';
-import { AIFloatingWidget } from '../components/ui/AIFloatingWidget';
+import React, { useEffect, useState } from 'react'; // מביאים את הכלים של ריאקט
+import { useParams } from 'react-router-dom'; // כלי לקבלת מספר הפרויקט מהכתובת בדפדפן
+import { KpiCard } from '../components/ui/KpiCard'; // כרטיסי מידע עם מספרים גדולים
+import { ProgressBar } from '../components/ui/ProgressBar'; // פסי התקדמות
+import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2 } from 'lucide-react'; // אייקונים
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'; // כלים לציור גרפים
+import { api } from '../services/api'; // השליח שמדבר עם השרת
+import { AIFloatingWidget } from '../components/ui/AIFloatingWidget'; // הבוט הצף (ברבור)
 
-const formatCurrency = (value) => {
+const formatCurrency = (value) => { // פונקציה שהופכת מספר לסכום כספי בשקלים
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
 };
 
-export function Dashboard() {
-  const { projectId } = useParams();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+export function Dashboard() { // דף הלוח בקרה (דשבורד) של הפרויקט
+  const { projectId } = useParams(); // לוקחים את מספר הפרויקט מהכתובת
+  const [data, setData] = useState(null); // כאן נשמור את כל הנתונים שנביא מהשרת
+  const [loading, setLoading] = useState(true); // האם אנחנו עדיין מחכים לנתונים
 
-  // Fetch analytics when projectId changes
-  useEffect(() => {
+  useEffect(() => { // ברגע שהדף עולה או שמספר הפרויקט משתנה - מביאים נתונים
     if (!projectId) return;
     
-    const fetchAnalytics = async () => {
+    const fetchAnalytics = async () => { // פונקציה שמביאה את הניתוח הכספי
       setLoading(true);
       try {
-        const analytics = await api.getProjectAnalytics(projectId);
-        setData(analytics);
+        const analytics = await api.getProjectAnalytics(projectId); // מבקשים מהשרת את הנתונים
+        setData(analytics); // שומרים אותם במערכת
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('Error fetching dashboard data:', error); // אם הייתה תקלה
       } finally {
-        setLoading(false);
+        setLoading(false); // מפסיקים להראות טעינה
       }
     };
     fetchAnalytics();
   }, [projectId]);
 
-  if (loading) {
+  if (loading) { // אם אנחנו בטעינה, מראים סמל מסתובב
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="w-8 h-8 animate-spin text-[var(--color-brand)]" />
@@ -42,23 +41,23 @@ export function Dashboard() {
     );
   }
 
-  if (!data) return <div className="p-8">שגיאה בטעינת נתונים או פרויקט לא נמצא.</div>;
+  if (!data) return <div className="p-8 text-center text-red-500 font-bold">שגיאה בטעינת נתונים או פרויקט לא נמצא.</div>;
 
-  const { project, totalBudget, actualExecution, totalIncomes, profitLoss, variance, utilization, breakdown } = data;
+  const { project, totalBudget, actualExecution, totalIncomes, profitLoss, variance, utilization, breakdown } = data; // מפרקים את המידע שקיבלנו מהשרת
 
-  const isOverspent = variance > 0;
-  const statusColor = isOverspent ? 'bg-red-500' : 'bg-[#10b981]';
+  const isOverspent = variance > 0; // בודקים אם חרגנו מהתקציב
+  const statusColor = isOverspent ? 'bg-red-500' : 'bg-[#10b981]'; // צבע הסטטוס (אדום לחריגה, ירוק לתקין)
   const statusText = isOverspent ? 'חריגה תקציבית' : 'תקין';
 
-  // Format data for Recharts BarChart (Budget vs Actual per Category)
-  const chartData = breakdown.map(item => ({
-    name: item.category,
-    תקציב: item.budget,
-    ביצוע: item.actual || 0
+  const chartData = breakdown.map(item => ({ // מכינים את הנתונים לגרף העמודות
+    name: item.category, // שם הסעיף (למשל: חשמל)
+    תקציב: item.budget, // הסכום המתוכנן
+    ביצוע: item.actual || 0 // הסכום ששולם בפועל
   }));
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      {/* כותרת הדף עם שם הפרויקט והסטטוס שלו */}
       <div className="mb-8 flex justify-between items-end bg-surface p-4 rounded-xl border border-border shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-text-primary mb-2 flex items-center gap-3">
@@ -72,6 +71,7 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* כרטיסי מידע עליונים עם מספרים מרכזיים */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <KpiCard 
           title="תקציב כולל" 
@@ -95,15 +95,20 @@ export function Dashboard() {
           status={profitLoss >= 0 ? 'ok' : 'danger'}
           icon={AlertTriangle} 
         />
+      </div>
+      
+      {/* כרטיס אחוז ניצול התקציב */}
+      <div className="mb-8">
         <KpiCard 
-          title="אחוז ניצול תקציב" 
-          value={`${utilization.toFixed(1)}%`} 
-          status={utilization > 100 ? 'danger' : utilization > 90 ? 'warning' : 'ok'}
-          icon={Percent} 
-        />
+            title="אחוז ניצול תקציב" 
+            value={`${utilization.toFixed(1)}%`} 
+            status={utilization > 100 ? 'danger' : utilization > 90 ? 'warning' : 'ok'}
+            icon={Percent} 
+          />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* רשימת פסי התקדמות לפי סעיפי תקציב */}
         <div className="lg:col-span-1 bg-surface border border-border rounded-xl p-6 shadow-sm flex flex-col gap-4 overflow-y-auto max-h-[400px]">
           <h3 className="text-lg font-bold text-text-primary sticky top-0 bg-surface pb-2 z-10">התקדמות לפי סעיפים</h3>
           {breakdown.map(item => (
@@ -117,6 +122,7 @@ export function Dashboard() {
           ))}
         </div>
 
+        {/* גרף השוואה בין תקציב לביצוע */}
         <div className="lg:col-span-2 bg-surface border border-border rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-bold text-text-primary mb-6">תקציב מול ביצוע לפי סעיף</h3>
           <div className="h-[300px] w-full" dir="ltr">
@@ -140,9 +146,7 @@ export function Dashboard() {
         </div>
       </div>
 
-
-
-      {/* Floating AI Widget */}
+      {/* הבוט הצף של ברבור להתייעצות */}
       <AIFloatingWidget projectId={projectId} />
     </div>
   );

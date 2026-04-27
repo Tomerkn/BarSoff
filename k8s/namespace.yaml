@@ -1,4 +1,4 @@
-apiVersion: v1
-kind: Namespace
+apiVersion: v1 # גרסת ה-API
+kind: Namespace # סוג האובייקט - מרחב שמות
 metadata:
-  name: barsuf
+  name: barsuf # שם מרחב השמות שיכיל את כל חלקי המערכת

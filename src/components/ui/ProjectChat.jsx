@@ -1,21 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { api } from '../../services/api';
-import { Bot, Send, Upload, FileText, Loader2, Paperclip, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react'; // מביאים את הכלים של ריאקט
+import { api } from '../../services/api'; // השליח שמדבר עם השרת
+import { Bot, Send, Upload, FileText, Loader2, Paperclip, X } from 'lucide-react'; // אייקונים יפים
 
-export function ProjectChat({ projectId }) {
-  // כאן אנחנו מגדירים את ברבור, עוזר ה-AI של המערכת 🦢
-  const [messages, setMessages] = useState([
-    { id: 1, type: 'bot', text: 'אהלן! אני ברבור 🦢, עוזר הבינה המלאכותית של הפרויקט. תזרוק לי פה איזה מסמך או תוכנית בנייה, ותרגיש חופשי לשאול אותי עליהם שאלות!' }
+export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבור
+  const [messages, setMessages] = useState([ // הודעות בצ'אט
+    { id: 1, type: 'bot', text: 'שלום, אני ברבור, עוזר הבינה המלאכותית של הפרויקט. ניתן להעלות מסמכים או תוכניות בנייה ולשאול אותי שאלות עליהם.' }
   ]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0); // סטייט חדש לאחוזי ההעלאה
-  const [files, setFiles] = useState([]);
-  const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const [input, setInput] = useState(''); // טקסט שהמשתמש כותב
+  const [loading, setLoading] = useState(false); // האם מחכים לתשובה
+  const [uploading, setUploading] = useState(false); // האם מעלים קובץ כרגע
+  const [uploadProgress, setUploadProgress] = useState(0); // אחוזי התקדמות העלאה
+  const [files, setFiles] = useState([]); // רשימת הקבצים שכבר נסרקו
+  const messagesEndRef = useRef(null); // התייחסות לסוף הצ'אט כדי לגלול למטה
+  const fileInputRef = useRef(null); // התייחסות לשדה העלאת הקבצים
 
-  const fetchFiles = async () => {
+  const fetchFiles = async () => { // מביא את רשימת הקבצים של הפרויקט מהשרת
     try {
       const response = await fetch(`${api.baseUrl}/projects/${projectId}/files`);
       if (response.ok) {
@@ -27,17 +26,17 @@ export function ProjectChat({ projectId }) {
     }
   };
 
-  useEffect(() => {
+  useEffect(() => { // מביא קבצים כשהפרויקט משתנה
     if (projectId) {
       fetchFiles();
     }
   }, [projectId]);
 
-  useEffect(() => {
+  useEffect(() => { // גלילה אוטומטית לסוף הצ'אט כשיש הודעה חדשה
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleFileUpload = async (e) => {
+  const handleFileUpload = async (e) => { // טיפול בהעלאת קובץ PDF
     const file = e.target.files[0];
     if (!file) return;
 
@@ -49,7 +48,6 @@ export function ProjectChat({ projectId }) {
     setUploading(true);
     setUploadProgress(0);
     
-    // מזהה ייחודי להודעת ההעלאה כדי שנוכל לעדכן אותה בזמן אמת
     const uploadMsgId = Date.now();
     setMessages(prev => [...prev, { id: uploadMsgId, type: 'system', text: `מתחיל העלאה של ${file.name}... 0%` }]);
 
@@ -57,8 +55,7 @@ export function ProjectChat({ projectId }) {
     formData.append('file', file);
 
     try {
-      // שימוש ב-XMLHttpRequest במקום fetch כדי לקבל אחוזי התקדמות אמיתיים מהדפדפן
-      await new Promise((resolve, reject) => {
+      await new Promise((resolve, reject) => { // העלאה עם מעקב התקדמות
         const xhr = new XMLHttpRequest();
         xhr.open('POST', `${api.baseUrl}/projects/${projectId}/files`);
         
@@ -71,10 +68,9 @@ export function ProjectChat({ projectId }) {
               msg.id === uploadMsgId ? { ...msg, text: `מעלה את ${file.name}... ${percentComplete}%` } : msg
             ));
             
-            // כשההעלאה לשרת מסתיימת, השרת מתחיל לסרוק את המסמך עם הבינה המלאכותית
             if (percentComplete === 100) {
               setMessages(prev => prev.map(msg => 
-                msg.id === uploadMsgId ? { ...msg, text: `ההעלאה הושלמה. ברבור סורק ומנתח את המסמך... 🦢` } : msg
+                msg.id === uploadMsgId ? { ...msg, text: `ההעלאה הושלמה. ברבור סורק ומנתח את המסמך...` } : msg
               ));
             }
           }
@@ -98,13 +94,11 @@ export function ProjectChat({ projectId }) {
       });
       
       await fetchFiles();
-      // עדכון ההודעה כשהסריקה הסתיימה בהצלחה
       setMessages(prev => prev.map(msg => 
-        msg.id === uploadMsgId ? { ...msg, text: `הקובץ ${file.name} נסרק ונלמד בהצלחה! 🎉 עכשיו אפשר לשאול עליו שאלות.` } : msg
+        msg.id === uploadMsgId ? { ...msg, text: `הקובץ ${file.name} נסרק ונלמד בהצלחה. ניתן לשאול עליו שאלות.` } : msg
       ));
     } catch (error) {
       console.error('Error uploading file:', error);
-      // במקרה של שגיאה, נמחק את הודעת ה"מעלה..." ונקפיץ פופאפ מסודר
       setMessages(prev => prev.filter(msg => msg.id !== uploadMsgId));
       alert(`שגיאה בהעלאת הקובץ:\n${error.message}`);
     } finally {
@@ -114,7 +108,7 @@ export function ProjectChat({ projectId }) {
     }
   };
 
-  const handleSend = async (e) => {
+  const handleSend = async (e) => { // שליחת שאלה ל-AI
     e.preventDefault();
     if (!input.trim() || loading) return;
 
@@ -138,7 +132,7 @@ export function ProjectChat({ projectId }) {
       setMessages(prev => [...prev, { id: Date.now(), type: 'bot', text: data.answer }]);
     } catch (error) {
       console.error('Error in chat:', error);
-      setMessages(prev => [...prev, { id: Date.now(), type: 'error', text: error.message || 'מצטער, חלה שגיאה בתקשורת עם מנוע ה-AI של גוגל (Gemini).' }]);
+      setMessages(prev => [...prev, { id: Date.now(), type: 'error', text: error.message || 'חלה שגיאה בתקשורת עם מנוע הבינה המלאכותית.' }]);
     } finally {
       setLoading(false);
     }
@@ -146,19 +140,19 @@ export function ProjectChat({ projectId }) {
 
   return (
     <div className="flex flex-col h-full bg-surface overflow-hidden">
-      {/* Header */}
+      {/* כותרת הצ'אט */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-surface-hover/30">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-[var(--color-brand)]/10 flex items-center justify-center text-[var(--color-brand)]">
             <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-text-primary">ברבור 🦢 (Barbur)</h3>
-            <p className="text-xs text-text-secondary">עוזר הבינה המלאכותית שלך</p>
+            <h3 className="font-bold text-text-primary">ברבור</h3>
+            <p className="text-xs text-text-secondary">עוזר בינה מלאכותית לניהול פרויקטים</p>
           </div>
         </div>
         
-        {/* Files Dropdown (simplified) */}
+        {/* רשימת מסמכים סרוקים */}
         <div className="relative group">
           <button className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
             <FileText className="w-4 h-4" />
@@ -166,7 +160,7 @@ export function ProjectChat({ projectId }) {
           </button>
           
           <div className="absolute left-0 top-full mt-2 w-64 bg-surface border border-border rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 p-2 max-h-64 overflow-y-auto">
-            <h4 className="text-xs font-bold text-text-secondary mb-2 uppercase tracking-wider px-2">קבצים זמינים לחיפוש:</h4>
+            <h4 className="text-xs font-bold text-text-secondary mb-2 uppercase tracking-wider px-2">קבצים זמינים:</h4>
             {files.length === 0 ? (
               <p className="text-sm text-text-muted px-2 pb-2">לא הועלו קבצים.</p>
             ) : (
@@ -183,7 +177,7 @@ export function ProjectChat({ projectId }) {
         </div>
       </div>
 
-      {/* Chat Messages */}
+      {/* אזור הודעות */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background">
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -201,7 +195,7 @@ export function ProjectChat({ projectId }) {
               {msg.type === 'bot' && (
                 <div className="flex items-center gap-2 mb-1 text-[var(--color-brand)]">
                   <Bot className="w-3.5 h-3.5" />
-                  <span className="text-xs font-bold">ברבור 🦢</span>
+                  <span className="text-xs font-bold">ברבור</span>
                 </div>
               )}
               <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.text}</p>
@@ -212,18 +206,16 @@ export function ProjectChat({ projectId }) {
           <div className="flex justify-start">
             <div className="bg-surface border border-border p-3 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-[var(--color-brand)]" />
-              <span className="text-sm text-text-secondary">ברבור חושב על התשובה... 🦢</span>
+              <span className="text-sm text-text-secondary">ברבור מעבד את התשובה...</span>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
+      {/* אזור כתיבה והעלאה */}
       <div className="p-3 border-t border-border bg-surface">
         <form onSubmit={handleSend} className="flex items-end gap-2">
-          
-          {/* Hidden File Input */}
           <input 
             type="file" 
             accept=".pdf"
@@ -232,17 +224,15 @@ export function ProjectChat({ projectId }) {
             onChange={handleFileUpload}
             disabled={uploading}
           />
-          
           <button 
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="p-3 text-text-secondary hover:text-[var(--color-brand)] hover:bg-[var(--color-brand)]/10 rounded-xl transition-colors disabled:opacity-50 shrink-0"
-            title="העלאת מסמך PDF (תוכניות, מפרטים)"
+            title="העלאת מסמך PDF"
           >
             {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
           </button>
-          
           <div className="relative flex-1">
             <textarea
               value={input}
@@ -253,7 +243,7 @@ export function ProjectChat({ projectId }) {
                   handleSend(e);
                 }
               }}
-              placeholder="שאל שאלה על מסמכי הפרויקט... (למשל: 'כמה מטר ריצוף דרוש?')"
+              placeholder="שאל שאלה על מסמכי הפרויקט..."
               className="w-full bg-background border border-border rounded-xl pl-12 pr-4 py-3 text-sm text-text-primary focus:outline-none focus:border-[var(--color-brand)] resize-none"
               rows={1}
               style={{ minHeight: '44px', maxHeight: '120px' }}

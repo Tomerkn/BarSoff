@@ -1,39 +1,39 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: apps/v1 # גרסת ה-API של קוברנטיס
+kind: Deployment # סוג האובייקט - פריסה של אפליקציה
 metadata:
-  name: frontend
-  namespace: barsuf
+  name: frontend # שם הפריסה
+  namespace: barsuf # מרחב השמות של הפרויקט
   labels:
-    app: frontend
+    app: frontend # תגיות לזיהוי
 spec:
-  replicas: 1
+  replicas: 1 # כמה עותקים להריץ (כרגע אחד מספיק)
   selector:
     matchLabels:
-      app: frontend
+      app: frontend # איך למצוא את העותקים ששייכים לפריסה הזו
   template:
     metadata:
       labels:
-        app: frontend
+        app: frontend # תגיות שיוצמדו לכל עותק (Pod) שיווצר
     spec:
       containers:
-        - name: frontend
-          image: barsuf-frontend:latest
-          imagePullPolicy: Never # Change this if using a real container registry
+        - name: frontend # שם המכולה
+          image: barsuf-frontend:latest # התמונה של קוד האתר
+          imagePullPolicy: Never # לא לנסות להוריד מהאינטרנט, להשתמש במה שיש במחשב
           ports:
-            - containerPort: 80
+            - containerPort: 80 # האפליקציה בתוך המכולה מאזינה לפורט 80
 
 ---
-apiVersion: v1
-kind: Service
+apiVersion: v1 # גרסת ה-API
+kind: Service # סוג האובייקט - שירות שמאפשר גישה לאפליקציה
 metadata:
-  name: frontend-service
-  namespace: barsuf
+  name: frontend-service # שם השירות
+  namespace: barsuf # מרחב השמות
 spec:
-  type: NodePort # Use NodePort for local clusters, LoadBalancer for real cloud
+  type: NodePort # מאפשר גישה מהמחשב המקומי (לסביבת ענן אמיתית משתמשים ב-LoadBalancer)
   selector:
-    app: frontend
+    app: frontend # לאיזה עותקים לשלוח את התעבורה
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-      nodePort: 30080
+    - protocol: TCP # פרוטוקול תקשורת
+      port: 80 # הפורט של השירות
+      targetPort: 80 # לאיזה פורט בתוך המכולה להפנות
+      nodePort: 30080 # הפורט שדרכו ניכנס לאתר מהדפדפן במחשב המקומי

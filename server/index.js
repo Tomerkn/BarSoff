@@ -1,94 +1,94 @@
-import express from 'express';
-import cors from 'cors';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { Storage } from '@google-cloud/storage';
-import db from './db.js';
-import './seed.js'; // Ensure database is seeded
-import { ingestDocument, askQuestion, analyzeReceipt } from './ai.js';
+import express from 'express'; // מביאים את אקספרס לבניית השרת
+import cors from 'cors'; // מאפשרים לאתר לדבר עם השרת בלי בעיות אבטחה
+import multer from 'multer'; // כלי לטיפול בהעלאת קבצים
+import path from 'path'; // כלי לטיפול בנתיבי קבצים
+import fs from 'fs'; // כלי לעבודה עם מערכת הקבצים של המחשב
+import { Storage } from '@google-cloud/storage'; // התחברות לאחסון הענן של גוגל
+import db from './db.js'; // מביאים את החיבור למסד הנתונים שלנו
+import './seed.js'; // מוודאים שיש נתונים ראשוניים בבסיס הנתונים
+import { ingestDocument, askQuestion, analyzeReceipt } from './ai.js'; // מביאים את המוח של הבינה המלאכותית
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+const app = express(); // יוצרים את האפליקציה של השרת
+const PORT = process.env.PORT || 3001; // קובעים על איזה פורט השרת ירוץ
 
-// Setup uploads directory
-const UPLOADS_DIR = path.join(process.cwd(), 'server', 'data', 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// הגדרת תיקיית העלאות
+const UPLOADS_DIR = path.join(process.cwd(), 'server', 'data', 'uploads'); // נתיב לתיקיית הקבצים
+if (!fs.existsSync(UPLOADS_DIR)) { // אם התיקייה לא קיימת
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true }); // יוצרים אותה
 }
 
-// Configure multer
-const storage = multer.diskStorage({
+// הגדרות להעלאת קבצים (מולטר)
+const storage = multer.diskStorage({ // קובעים איפה ואיך לשמור את הקבצים הזמניים
   destination: (req, file, cb) => {
-    cb(null, UPLOADS_DIR);
+    cb(null, UPLOADS_DIR); // שומרים בתיקיית ההעלאות
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
+    cb(null, `${Date.now()}-${file.originalname}`); // מוסיפים תאריך לשם הקובץ כדי שלא יהיו כפילויות
   }
 });
-const upload = multer({ storage });
+const upload = multer({ storage }); // מפעילים את המנגנון
 
-// Initialize Google Cloud Storage
-const storageClient = new Storage();
-const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'barsuf-media-storage-1777314059';
+// חיבור לאחסון של גוגל
+const storageClient = new Storage(); // יוצרים לקוח ענן
+const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'barsuf-media-storage-1777314059'; // שם הדלי בענן
 
-app.use(cors());
-app.use(express.json());
+app.use(cors()); // מפעילים קורס
+app.use(express.json()); // מאפשרים לשרת לקרוא מידע בפורמט JSON
 
-// Projects API
-app.get('/api/projects', (req, res) => {
-  const projects = db.prepare('SELECT * FROM projects').all();
-  res.json(projects);
+// --- פרויקטים ---
+app.get('/api/projects', (req, res) => { // קבלת כל הפרויקטים
+  const projects = db.prepare('SELECT * FROM projects').all(); // מושכים מהדאטהבייס
+  res.json(projects); // מחזירים למשתמש
 });
 
-app.get('/api/projects/:id', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
-  if (!project) return res.status(404).json({ error: 'Project not found' });
-  res.json(project);
+app.get('/api/projects/:id', (req, res) => { // קבלת פרויקט ספציפי
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id); // מחפשים לפי תעודת זהות
+  if (!project) return res.status(404).json({ error: 'Project not found' }); // אם לא נמצא
+  res.json(project); // מחזירים את הפרויקט
 });
 
-app.post('/api/projects', (req, res) => {
-  const { name, location, end_date, status } = req.body;
-  const insert = db.prepare('INSERT INTO projects (name, location, end_date, status) VALUES (?, ?, ?, ?)');
-  const result = insert.run(name, location, end_date, status);
-  res.status(201).json({ id: result.lastInsertRowid });
+app.post('/api/projects', (req, res) => { // הוספת פרויקט חדש
+  const { name, location, end_date, status } = req.body; // מקבלים את הפרטים
+  const insert = db.prepare('INSERT INTO projects (name, location, end_date, status) VALUES (?, ?, ?, ?)'); // מכינים פקודת הוספה
+  const result = insert.run(name, location, end_date, status); // מריצים
+  res.status(201).json({ id: result.lastInsertRowid }); // מחזירים את המספר של הפרויקט החדש
 });
 
-// Budgets API
-app.get('/api/budgets', (req, res) => {
-  const { projectId } = req.query;
-  let query = 'SELECT * FROM budgets';
+// --- תקציבים ---
+app.get('/api/budgets', (req, res) => { // קבלת תקציבים
+  const { projectId } = req.query; // בודקים אם ביקשו פרויקט מסוים
+  let query = 'SELECT * FROM budgets'; // שאילתא בסיסית
   let params = [];
   if (projectId) {
-    query += ' WHERE project_id = ?';
+    query += ' WHERE project_id = ?'; // סינון לפי פרויקט
     params.push(projectId);
   }
-  const budgets = db.prepare(query).all(params);
-  res.json(budgets);
+  const budgets = db.prepare(query).all(params); // מריצים
+  res.json(budgets); // מחזירים
 });
 
-app.post('/api/budgets', (req, res) => {
+app.post('/api/budgets', (req, res) => { // הוספת סעיף תקציב
   const { project_id, category, total_amount, approved_date } = req.body;
   const insert = db.prepare('INSERT INTO budgets (project_id, category, total_amount, approved_date) VALUES (?, ?, ?, ?)');
   const result = insert.run(project_id, category, total_amount, approved_date);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/budgets/:id', (req, res) => {
+app.put('/api/budgets/:id', (req, res) => { // עדכון סעיף תקציב
   const { category, total_amount, approved_date } = req.body;
   const update = db.prepare('UPDATE budgets SET category = ?, total_amount = ?, approved_date = ? WHERE id = ?');
   update.run(category, total_amount, approved_date, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/budgets/:id', (req, res) => {
+app.delete('/api/budgets/:id', (req, res) => { // מחיקת סעיף תקציב
   const stmt = db.prepare('DELETE FROM budgets WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Expenses API
-app.get('/api/expenses', (req, res) => {
+// --- הוצאות ---
+app.get('/api/expenses', (req, res) => { // קבלת הוצאות
   const { projectId } = req.query;
   let query = 'SELECT expenses.*, contractors.name as contractor_name, budgets.category as budget_category FROM expenses LEFT JOIN contractors ON expenses.contractor_id = contractors.id LEFT JOIN budgets ON expenses.budget_id = budgets.id';
   let params = [];
@@ -101,106 +101,106 @@ app.get('/api/expenses', (req, res) => {
   res.json(expenses);
 });
 
-app.post('/api/expenses', (req, res) => {
+app.post('/api/expenses', (req, res) => { // הוספת הוצאה
   const { project_id, budget_id, contractor_id, amount, date, description } = req.body;
   const insert = db.prepare('INSERT INTO expenses (project_id, budget_id, contractor_id, amount, date, description) VALUES (?, ?, ?, ?, ?, ?)');
   const result = insert.run(project_id, budget_id, contractor_id, amount, date, description);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/expenses/:id', (req, res) => {
+app.put('/api/expenses/:id', (req, res) => { // עדכון הוצאה
   const { budget_id, contractor_id, amount, date, description } = req.body;
   const update = db.prepare('UPDATE expenses SET budget_id = ?, contractor_id = ?, amount = ?, date = ?, description = ? WHERE id = ?');
   update.run(budget_id, contractor_id, amount, date, description, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/expenses/:id', (req, res) => {
+app.delete('/api/expenses/:id', (req, res) => { // מחיקת הוצאה
   const stmt = db.prepare('DELETE FROM expenses WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Contractors API
-app.get('/api/contractors', (req, res) => {
+// --- קבלנים ---
+app.get('/api/contractors', (req, res) => { // קבלת רשימת קבלנים
   const contractors = db.prepare('SELECT * FROM contractors').all();
   res.json(contractors);
 });
 
-app.post('/api/contractors', (req, res) => {
+app.post('/api/contractors', (req, res) => { // הוספת קבלן
   const { name, specialization, phone, email } = req.body;
   const insert = db.prepare('INSERT INTO contractors (name, specialization, phone, email) VALUES (?, ?, ?, ?)');
   const result = insert.run(name, specialization, phone, email);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/contractors/:id', (req, res) => {
+app.put('/api/contractors/:id', (req, res) => { // עדכון קבלן
   const { name, specialization, phone, email } = req.body;
   const update = db.prepare('UPDATE contractors SET name = ?, specialization = ?, phone = ?, email = ? WHERE id = ?');
   update.run(name, specialization, phone, email, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/contractors/:id', (req, res) => {
+app.delete('/api/contractors/:id', (req, res) => { // מחיקת קבלן
   const stmt = db.prepare('DELETE FROM contractors WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Orders API
-app.get('/api/orders', (req, res) => {
+// --- הזמנות ---
+app.get('/api/orders', (req, res) => { // קבלת כל ההזמנות
   const orders = db.prepare('SELECT orders.*, projects.name as project_name FROM orders LEFT JOIN projects ON orders.project_id = projects.id ORDER BY orders.order_date DESC').all();
   res.json(orders);
 });
 
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', (req, res) => { // יצירת הזמנה
   const { project_id, supplier_name, item_description, amount, order_date, status } = req.body;
   const insert = db.prepare('INSERT INTO orders (project_id, supplier_name, item_description, amount, order_date, status) VALUES (?, ?, ?, ?, ?, ?)');
   const result = insert.run(project_id, supplier_name, item_description, amount, order_date, status);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/orders/:id', (req, res) => {
+app.put('/api/orders/:id', (req, res) => { // עדכון הזמנה
   const { supplier_name, item_description, amount, order_date, status } = req.body;
   const update = db.prepare('UPDATE orders SET supplier_name = ?, item_description = ?, amount = ?, order_date = ?, status = ? WHERE id = ?');
   update.run(supplier_name, item_description, amount, order_date, status, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/orders/:id', (req, res) => {
+app.delete('/api/orders/:id', (req, res) => { // מחיקת הזמנה
   const stmt = db.prepare('DELETE FROM orders WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Incomes API
-app.get('/api/incomes', (req, res) => {
+// --- הכנסות ---
+app.get('/api/incomes', (req, res) => { // קבלת כל ההכנסות
   const incomes = db.prepare('SELECT incomes.*, projects.name as project_name FROM incomes LEFT JOIN projects ON incomes.project_id = projects.id ORDER BY incomes.date DESC').all();
   res.json(incomes);
 });
 
-app.post('/api/incomes', (req, res) => {
+app.post('/api/incomes', (req, res) => { // תיעוד הכנסה חדשה
   const { project_id, description, amount, date } = req.body;
   const insert = db.prepare('INSERT INTO incomes (project_id, description, amount, date) VALUES (?, ?, ?, ?)');
   const result = insert.run(project_id, description, amount, date || new Date().toISOString().split('T')[0]);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/incomes/:id', (req, res) => {
+app.put('/api/incomes/:id', (req, res) => { // עדכון הכנסה
   const { description, amount, date } = req.body;
   const update = db.prepare('UPDATE incomes SET description = ?, amount = ?, date = ? WHERE id = ?');
   update.run(description, amount, date, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/incomes/:id', (req, res) => {
+app.delete('/api/incomes/:id', (req, res) => { // מחיקת הכנסה
   const stmt = db.prepare('DELETE FROM incomes WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Daily Logs API
-app.get('/api/daily-logs', (req, res) => {
+// --- יומני עבודה ---
+app.get('/api/daily-logs', (req, res) => { // קבלת יומני עבודה
   const { projectId } = req.query;
   let query = 'SELECT * FROM daily_logs';
   let params = [];
@@ -213,28 +213,28 @@ app.get('/api/daily-logs', (req, res) => {
   res.json(logs);
 });
 
-app.post('/api/daily-logs', (req, res) => {
+app.post('/api/daily-logs', (req, res) => { // כתיבת יומן עבודה
   const { project_id, date, manager_name, weather, workers_count, notes, image_url } = req.body;
   const insert = db.prepare('INSERT INTO daily_logs (project_id, date, manager_name, weather, workers_count, notes, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const result = insert.run(project_id, date, manager_name, weather, workers_count, notes, image_url);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/daily-logs/:id', (req, res) => {
+app.put('/api/daily-logs/:id', (req, res) => { // עדכון יומן עבודה
   const { date, manager_name, weather, workers_count, notes, image_url } = req.body;
   const update = db.prepare('UPDATE daily_logs SET date = ?, manager_name = ?, weather = ?, workers_count = ?, notes = ?, image_url = ? WHERE id = ?');
   update.run(date, manager_name, weather, workers_count, notes, image_url, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/daily-logs/:id', (req, res) => {
+app.delete('/api/daily-logs/:id', (req, res) => { // מחיקת יומן
   const stmt = db.prepare('DELETE FROM daily_logs WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Warranty Tickets API
-app.get('/api/warranty-tickets', (req, res) => {
+// --- שנת בדק ---
+app.get('/api/warranty-tickets', (req, res) => { // קבלת קריאות שנת בדק
   const { projectId } = req.query;
   let query = 'SELECT w.*, c.name as contractor_name FROM warranty_tickets w LEFT JOIN contractors c ON w.contractor_id = c.id';
   let params = [];
@@ -247,28 +247,28 @@ app.get('/api/warranty-tickets', (req, res) => {
   res.json(tickets);
 });
 
-app.post('/api/warranty-tickets', (req, res) => {
+app.post('/api/warranty-tickets', (req, res) => { // פתיחת קריאת שירות
   const { project_id, customer_name, issue_description, contractor_id, status, open_date, close_date, notes } = req.body;
   const insert = db.prepare('INSERT INTO warranty_tickets (project_id, customer_name, issue_description, contractor_id, status, open_date, close_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const result = insert.run(project_id, customer_name, issue_description, contractor_id, status || 'פתוח', open_date, close_date, notes);
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-app.put('/api/warranty-tickets/:id', (req, res) => {
+app.put('/api/warranty-tickets/:id', (req, res) => { // עדכון קריאת שירות
   const { customer_name, issue_description, contractor_id, status, open_date, close_date, notes } = req.body;
   const update = db.prepare('UPDATE warranty_tickets SET customer_name = ?, issue_description = ?, contractor_id = ?, status = ?, open_date = ?, close_date = ?, notes = ? WHERE id = ?');
   update.run(customer_name, issue_description, contractor_id, status, open_date, close_date, notes, req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/warranty-tickets/:id', (req, res) => {
+app.delete('/api/warranty-tickets/:id', (req, res) => { // מחיקת קריאה
   const stmt = db.prepare('DELETE FROM warranty_tickets WHERE id = ?');
   stmt.run(req.params.id);
   res.json({ success: true });
 });
 
-// Global Analytics API
-app.get('/api/analytics/global', (req, res) => {
+// --- נתונים כלליים (דאשבורד ראשי) ---
+app.get('/api/analytics/global', (req, res) => { // קבלת נתונים מכל הארגון
   const totalBudgetRow = db.prepare('SELECT SUM(total_amount) as total FROM budgets').get();
   const totalExpensesRow = db.prepare('SELECT SUM(amount) as total FROM expenses').get();
   const totalIncomesRow = db.prepare('SELECT SUM(amount) as total FROM incomes').get();
@@ -277,7 +277,7 @@ app.get('/api/analytics/global', (req, res) => {
   const projectsRow = db.prepare("SELECT COUNT(*) as count FROM projects").get();
   const activeProjectsRow = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status = 'תקין'").get();
 
-  res.json({
+  res.json({ // מחזירים סיכום של הכל
     totalBudget: totalBudgetRow.total || 0,
     totalExpenses: totalExpensesRow.total || 0,
     totalIncomes: totalIncomesRow.total || 0,
@@ -287,8 +287,8 @@ app.get('/api/analytics/global', (req, res) => {
   });
 });
 
-// Dashboard Analytics API
-app.get('/api/projects/:id/analytics', (req, res) => {
+// --- נתונים לפרויקט ספציפי ---
+app.get('/api/projects/:id/analytics', (req, res) => { // דוח כספי לפרויקט
   const projectId = req.params.id;
   
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
@@ -308,7 +308,6 @@ app.get('/api/projects/:id/analytics', (req, res) => {
 
   const profitLoss = totalIncomes - actualExecution;
 
-  // Breakdown by budget
   const breakdown = db.prepare(`
     SELECT b.id, b.category, b.total_amount as budget, SUM(e.amount) as actual 
     FROM budgets b 
@@ -317,43 +316,40 @@ app.get('/api/projects/:id/analytics', (req, res) => {
     GROUP BY b.id
   `).all(projectId);
 
-  res.json({
-    project,
-    totalBudget,
-    actualExecution,
-    totalIncomes,
-    profitLoss,
-    variance,
-    utilization,
-    breakdown
+  res.json({ // החזרת נתונים לפרויקט
+    project, // פרטי הפרויקט
+    totalBudget, // תקציב כולל
+    actualExecution, // ביצוע כולל
+    totalIncomes, // הכנסות
+    profitLoss, // רווח
+    variance, // סטייה
+    utilization, // אחוז ניצול
+    breakdown // פירוט
   });
 });
 
-// Files & AI API
-app.get('/api/projects/:id/files', (req, res) => {
-  const files = db.prepare('SELECT * FROM files WHERE project_id = ? ORDER BY upload_date DESC').all(req.params.id);
-  res.json(files);
+// --- ניהול קבצים ובינה מלאכותית ---
+app.get('/api/projects/:id/files', (req, res) => { // קבלת רשימת קבצים של פרויקט
+  const files = db.prepare('SELECT * FROM files WHERE project_id = ? ORDER BY upload_date DESC').all(req.params.id); // שליפת קבצים
+  res.json(files); // החזרת הרשימה
 });
 
-app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const projectId = req.params.id;
-  const filename = req.file.filename;
-  const originalName = req.file.originalname;
-  const filePath = req.file.path;
+app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => { // העלאת קובץ לניתוח בינה מלאכותית
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' }); // בדיקה שיש קובץ
+  const projectId = req.params.id; // מזהה פרויקט
+  const filename = req.file.filename; // שם קובץ שמור
+  const originalName = req.file.originalname; // שם מקורי
+  const filePath = req.file.path; // נתיב קובץ
   
-  try {
-    // 1. Save to DB
-    const insert = db.prepare('INSERT INTO files (project_id, filename, original_name, upload_date) VALUES (?, ?, ?, ?)');
-    insert.run(projectId, filename, originalName, new Date().toISOString());
+  try { // ניסיון לביצוע הפעולה
+    const insert = db.prepare('INSERT INTO files (project_id, filename, original_name, upload_date) VALUES (?, ?, ?, ?)'); // הכנת השאילתה
+    insert.run(projectId, filename, originalName, new Date().toISOString()); // רישום במסד נתונים
     
-    // 2. Ingest into AI Vector Store (Background process)
-    // We await it here so the user gets confirmation it's ready
-    await ingestDocument(projectId, filePath);
+    await ingestDocument(projectId, filePath); // שולחים את הקובץ למוח של ה-AI שילמד אותו
     
-    res.status(201).json({ success: true, message: 'File uploaded and processed' });
-  } catch (error) {
-    console.error('Upload error:', error);
+    res.json({ success: true, filename: originalName }); // הצלחה
+  } catch (error) { // במקרה של שגיאה
+    console.error('File ingest error:', error);
     if (error.status === 503 || (error.message && error.message.includes('503'))) {
       return res.status(503).json({ error: 'השרתים של גוגל עמוסים כרגע. אנא נסה להעלות את הקובץ שוב בעוד כמה דקות.' });
     }
@@ -362,13 +358,13 @@ app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => {
   }
 });
 
-// Project Media (Gallery) API
-app.get('/api/projects/:id/media', (req, res) => {
+// --- גלריית פרויקט ---
+app.get('/api/projects/:id/media', (req, res) => { // קבלת תמונות וסרטונים
   const media = db.prepare('SELECT * FROM project_media WHERE project_id = ? ORDER BY upload_date DESC').all(req.params.id);
   res.json(media);
 });
 
-app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
+app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => { // העלאת מדיה לענן
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const projectId = req.params.id;
   const originalName = req.file.originalname;
@@ -376,13 +372,11 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
   const mimeType = req.file.mimetype;
   const folder = req.body.folder || 'כללי';
   
-  // To avoid special characters in GCS URL, encode filename safely or use a simple timestamp
   const safeFilename = encodeURIComponent(originalName.replace(/\s+/g, '-'));
   const destination = `projects/${projectId}/${Date.now()}-${safeFilename}`;
   
   try {
-    // Upload to GCS
-    await storageClient.bucket(BUCKET_NAME).upload(filePath, {
+    await storageClient.bucket(BUCKET_NAME).upload(filePath, { // מעלים לענן של גוגל
       destination: destination,
       metadata: {
         contentType: mimeType,
@@ -390,23 +384,17 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
       }
     });
     
-    // The bucket is public, so we can generate the public URL directly
-    const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${destination}`;
+    const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${destination}`; // מקבלים כתובת אינטרנט לתמונה
     
-    // Save to DB
     const insert = db.prepare('INSERT INTO project_media (project_id, filename, original_name, url, mime_type, folder, upload_date) VALUES (?, ?, ?, ?, ?, ?, ?)');
     insert.run(projectId, req.file.filename, originalName, publicUrl, mimeType, folder, new Date().toISOString());
     
-    // AI Processing
     try {
-      // 1. Always ingest into AI knowledge base for "Consult with AI"
-      await ingestDocument(projectId, filePath, mimeType);
+      await ingestDocument(projectId, filePath, mimeType); // נותנים ל-AI ללמוד גם את המדיה הזו
       
-      // 2. If it's a receipt, auto-extract expense
-      if (folder === 'קבלות') {
+      if (folder === 'קבלות') { // אם זו קבלה, מבקשים מה-AI להוציא ממנה נתונים כספיים באופן אוטומטי
         const receiptData = await analyzeReceipt(filePath, mimeType);
         if (receiptData && receiptData.amount) {
-          // Find or create a "כללי" (General) budget for this project
           let budget = db.prepare('SELECT id FROM budgets WHERE project_id = ? AND category = ?').get(projectId, 'כללי');
           if (!budget) {
             const insertBudget = db.prepare('INSERT INTO budgets (project_id, category, total_amount, approved_date) VALUES (?, ?, ?, ?)');
@@ -414,7 +402,6 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
             budget = { id: info.lastInsertRowid };
           }
 
-          // Insert expense
           const insertExpense = db.prepare('INSERT INTO expenses (project_id, budget_id, amount, date, description) VALUES (?, ?, ?, ?, ?)');
           insertExpense.run(
             projectId, 
@@ -429,8 +416,7 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
       console.error('AI Processing error (non-fatal):', aiError);
     }
     
-    // Clean up local file since it's uploaded to cloud
-    if (fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath)) { // מוחקים את הקובץ המקומי כי הוא כבר בענן
       fs.unlinkSync(filePath);
     }
     
@@ -441,23 +427,23 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
   }
 });
 
-app.post('/api/projects/:id/chat', async (req, res) => {
+app.post('/api/projects/:id/chat', async (req, res) => { // שאלות ל-AI (ברבור)
   const { question } = req.body;
   if (!question) return res.status(400).json({ error: 'Question required' });
   
   try {
-    const answer = await askQuestion(req.params.id, question);
+    const answer = await askQuestion(req.params.id, question); // מקבלים תשובה מה-AI על סמך מסמכי הפרויקט
     res.json({ answer });
   } catch (error) {
     console.error('Chat error:', error);
     if (error.status === 503 || (error.message && error.message.includes('503'))) {
-      return res.status(503).json({ error: 'ברבור חווה עומס זמני בשרתי גוגל כרגע. קח נשימה, ספור עד עשר, ונסה לשאול שוב! 🦢' });
+      return res.status(503).json({ error: 'ברבור חווה עומס זמני בשרתי גוגל כרגע. אנא נסה לשאול שוב מאוחר יותר.' });
     }
     res.status(500).json({ error: 'התגלתה שגיאה בתקשורת עם מנוע הבינה. אנא נסה שוב מאוחר יותר.' });
   }
 });
 
-// AI Excel Import API
+// --- ייבוא מאקסל באמצעות AI ---
 app.post('/api/projects/:id/import-excel', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const projectId = req.params.id;
@@ -470,8 +456,8 @@ app.post('/api/projects/:id/import-excel', upload.single('file'), async (req, re
   }
 
   try {
-    const { extractDataFromExcel } = require('./ai.js');
-    const extractedItems = await extractDataFromExcel(filePath, mimeType, targetTable);
+    const { extractDataFromExcel } = await import('./ai.js'); // טעינה דינמית של המוח
+    const extractedItems = await extractDataFromExcel(filePath, mimeType, targetTable); // מוציאים נתונים מהאקסל
     
     if (!extractedItems || !Array.isArray(extractedItems) || extractedItems.length === 0) {
       throw new Error('No valid data extracted from the file');
@@ -479,13 +465,12 @@ app.post('/api/projects/:id/import-excel', upload.single('file'), async (req, re
 
     let insertedCount = 0;
     
-    for (const item of extractedItems) {
+    for (const item of extractedItems) { // מכניסים כל שורה מהאקסל לדאטהבייס
       if (targetTable === 'budgets') {
         const insert = db.prepare('INSERT INTO budgets (project_id, category, total_amount, approved_date) VALUES (?, ?, ?, ?)');
         insert.run(projectId, item.category || 'כללי', item.total_amount || 0, item.approved_date || new Date().toISOString().split('T')[0]);
         insertedCount++;
       } else if (targetTable === 'expenses') {
-        // Find or create contractor if name exists
         let contractorId = null;
         if (item.contractor_name) {
           const c = db.prepare('SELECT id FROM contractors WHERE name LIKE ?').get(`%${item.contractor_name}%`);
@@ -496,7 +481,6 @@ app.post('/api/projects/:id/import-excel', upload.single('file'), async (req, re
           }
         }
         
-        // Find or create budget if category exists
         let budgetId = null;
         if (item.budget_category) {
           const b = db.prepare('SELECT id FROM budgets WHERE project_id = ? AND category LIKE ?').get(projectId, `%${item.budget_category}%`);
@@ -517,22 +501,20 @@ app.post('/api/projects/:id/import-excel', upload.single('file'), async (req, re
       }
     }
 
-    // Clean up local file
-    if (fs.existsSync(filePath)) {
+    if (fs.existsSync(filePath)) { // מנקים קובץ זמני
       fs.unlinkSync(filePath);
     }
 
     res.json({ success: true, count: insertedCount, message: `Successfully imported ${insertedCount} rows.` });
   } catch (error) {
     console.error('Excel Import error:', error);
-    // Clean up local file
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     res.status(500).json({ error: error.message || 'Failed to import data via AI' });
   }
 });
 
-// Tasks (Gantt) API
-app.get('/api/projects/:id/tasks', (req, res) => {
+// --- משימות וגאנט ---
+app.get('/api/projects/:id/tasks', (req, res) => { // קבלת לוח זמנים
   try {
     const tasks = db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY start_date ASC').all(req.params.id);
     res.json(tasks);
@@ -542,7 +524,7 @@ app.get('/api/projects/:id/tasks', (req, res) => {
   }
 });
 
-app.post('/api/projects/:id/tasks', (req, res) => {
+app.post('/api/projects/:id/tasks', (req, res) => { // הוספת משימה
   const { name, start_date, end_date, progress = 0, status = 'pending' } = req.body;
   if (!name || !start_date || !end_date) return res.status(400).json({ error: 'Missing required fields' });
   
@@ -556,7 +538,7 @@ app.post('/api/projects/:id/tasks', (req, res) => {
   }
 });
 
-app.put('/api/tasks/:id', (req, res) => {
+app.put('/api/tasks/:id', (req, res) => { // עדכון משימה
   const { name, start_date, end_date, progress, status } = req.body;
   try {
     const update = db.prepare('UPDATE tasks SET name = ?, start_date = ?, end_date = ?, progress = ?, status = ? WHERE id = ?');
@@ -568,7 +550,7 @@ app.put('/api/tasks/:id', (req, res) => {
   }
 });
 
-app.delete('/api/tasks/:id', (req, res) => {
+app.delete('/api/tasks/:id', (req, res) => { // מחיקת משימה
   try {
     const stmt = db.prepare('DELETE FROM tasks WHERE id = ?');
     stmt.run(req.params.id);
@@ -579,6 +561,7 @@ app.delete('/api/tasks/:id', (req, res) => {
   }
 });
 
+// סנכרון עם Monday (אופציונלי)
 app.post('/api/projects/:id/sync-monday', async (req, res) => {
   const { token, boardId } = req.body;
   if (!token || !boardId) return res.status(400).json({ error: 'Missing Monday credentials' });
@@ -602,11 +585,9 @@ app.post('/api/projects/:id/sync-monday', async (req, res) => {
     
     const items = data.data.boards[0].items_page.items;
     
-    // Clear existing tasks for this project
     db.prepare('DELETE FROM tasks WHERE project_id = ?').run(req.params.id);
     const insert = db.prepare('INSERT INTO tasks (project_id, name, start_date, end_date, progress, status) VALUES (?, ?, ?, ?, ?, ?)');
     
-    // Process items
     const today = new Date();
     
     for (let i = 0; i < items.length; i++) {
@@ -616,7 +597,6 @@ app.post('/api/projects/:id/sync-monday', async (req, res) => {
       let progress = 0;
       let status = 'pending';
       
-      // Look for date or timeline columns in monday
       for (const col of item.column_values) {
         if (col.id.includes('date') || col.id.includes('timeline')) {
            if (col.text && col.text.includes(' - ')) {
@@ -638,14 +618,13 @@ app.post('/api/projects/:id/sync-monday', async (req, res) => {
         }
       }
       
-      // Default dates if not found (stagger them to make a nice gantt)
       if (!startDateStr) {
          const s = new Date(today);
-         s.setDate(s.getDate() + (i * 3)); // Stagger by 3 days
+         s.setDate(s.getDate() + (i * 3));
          startDateStr = s.toISOString().split('T')[0];
          
          const e = new Date(s);
-         e.setDate(e.getDate() + 7); // 1 week duration
+         e.setDate(e.getDate() + 7);
          endDateStr = e.toISOString().split('T')[0];
       } else if (!endDateStr) {
          endDateStr = startDateStr;
@@ -661,7 +640,7 @@ app.post('/api/projects/:id/sync-monday', async (req, res) => {
   }
 });
 
-// Serve frontend static files in production
+// הגשת האתר (פרונטנד) מהשרת
 const DIST_DIR = path.join(process.cwd(), 'dist');
 if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
@@ -670,6 +649,6 @@ if (fs.existsSync(DIST_DIR)) {
   });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, () => { // הפעלת השרת
   console.log(`Server is running on http://localhost:${PORT}`);
 });

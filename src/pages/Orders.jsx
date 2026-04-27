@@ -1,73 +1,73 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { api } from '../services/api';
-import { Loader2, Plus, ClipboardList, Pencil, Trash2 } from 'lucide-react';
-import { Modal } from '../components/ui/Modal';
+import React, { useEffect, useState } from 'react'; // מביאים את הכלים של ריאקט
+import { useParams } from 'react-router-dom'; // כלי לקבלת מספר הפרויקט מהכתובת
+import { api } from '../services/api'; // השליח שמדבר עם השרת
+import { Loader2, Plus, ClipboardList, Pencil, Trash2 } from 'lucide-react'; // אייקונים יפים
+import { Modal } from '../components/ui/Modal'; // חלונית קופצת להוספת נתונים
 
-const formatCurrency = (value) => {
+const formatCurrency = (value) => { // פונקציה שהופכת מספר לסכום כספי בשקלים
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
 };
 
-export function Orders() {
-  const { projectId } = useParams();
-  const [orders, setOrders] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
+export function Orders() { // דף ניהול הזמנות רכש (POs)
+  const { projectId } = useParams(); // לוקחים את מספר הפרויקט מהכתובת
+  const [orders, setOrders] = useState([]); // רשימת ההזמנות שנשמרת כאן
+  const [projects, setProjects] = useState([]); // רשימת הפרויקטים
+  const [loading, setLoading] = useState(true); // האם אנחנו מחכים למידע מהשרת
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ project_id: projectId, supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' });
-  const [submitting, setSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false); // האם החלונית להוספת הזמנה פתוחה
+  const [formData, setFormData] = useState({ project_id: projectId, supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' }); // הנתונים שהמשתמש ממלא בטופס
+  const [submitting, setSubmitting] = useState(false); // האם אנחנו באמצע שמירת נתונים
+  const [editingId, setEditingId] = useState(null); // אם אנחנו עורכים הזמנה קיימת
 
-  const fetchData = async () => {
+  const fetchData = async () => { // פונקציה שמביאה את כל ההזמנות והפרויקטים מהשרת
     try {
       const [ordersData, projectsData] = await Promise.all([
         api.getOrders(),
         api.getProjects()
       ]);
-      const projectOrders = ordersData.filter(o => o.project_id === Number(projectId));
+      const projectOrders = ordersData.filter(o => o.project_id === Number(projectId)); // מסננים רק את ההזמנות של הפרויקט הנוכחי
       setOrders(projectOrders);
       setProjects(projectsData);
     } catch (error) {
       console.error(error);
     } finally {
-      setLoading(false);
+      setLoading(false); // סיום מצב טעינה
     }
   };
 
-  useEffect(() => {
+  useEffect(() => { // הבאת הנתונים ברגע שהדף עולה
     fetchData();
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
+  const handleSubmit = async (e) => { // שמירת הזמנה חדשה או עריכת קיימת
+    e.preventDefault(); // מניעת רענון הדף
+    setSubmitting(true); // מצב שמירה
     try {
-      if (editingId) {
+      if (editingId) { // עריכת הזמנה
         await api.updateResource('orders', editingId, {
           ...formData,
           project_id: projectId,
           amount: Number(formData.amount)
         });
-      } else {
+      } else { // יצירת הזמנה חדשה
         await api.createOrder({
           ...formData,
           project_id: projectId,
           amount: Number(formData.amount)
         });
       }
-      setIsModalOpen(false);
-      setEditingId(null);
-      setFormData({ project_id: projectId, supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' });
-      await fetchData();
+      setIsModalOpen(false); // סגירת החלונית
+      setEditingId(null); // איפוס עריכה
+      setFormData({ project_id: projectId, supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' }); // ניקוי טופס
+      await fetchData(); // רענון הרשימה
     } catch (error) {
       console.error('Failed to save order:', error);
     } finally {
-      setSubmitting(false);
+      setSubmitting(false); // סיום מצב שמירה
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id) => { // מחיקת הזמנה מהמערכת
     if (!window.confirm('האם אתה בטוח שברצונך למחוק הזמנה זו?')) return;
     try {
       await api.deleteResource('orders', id);
@@ -77,7 +77,7 @@ export function Orders() {
     }
   };
 
-  const handleEdit = (order) => {
+  const handleEdit = (order) => { // הכנת הטופס לעריכה
     setEditingId(order.id);
     setFormData({
       project_id: order.project_id,
@@ -90,13 +90,13 @@ export function Orders() {
     setIsModalOpen(true);
   };
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>; // סמל טעינה
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">הזמנות רכש (POs)</h1>
+          <h1 className="text-2xl font-bold text-text-primary">הזמנות רכש (POs)</h1> {/* כותרת הדף */}
           <p className="text-text-secondary text-sm">מעקב ובקרת הזמנות רכש מול ספקים וקבלנים</p>
         </div>
         <button 
@@ -113,6 +113,7 @@ export function Orders() {
       </div>
 
       <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+        {/* טבלת ההזמנות */}
         <table className="w-full text-right">
           <thead className="bg-surface-hover/50 border-b border-border text-sm text-text-secondary">
             <tr>
@@ -134,7 +135,7 @@ export function Orders() {
                 <td className="px-6 py-4 text-sm text-text-primary">{o.item_description}</td>
                 <td className="px-6 py-4 text-sm text-text-secondary">{new Date(o.order_date).toLocaleDateString('he-IL')}</td>
                 <td className="px-6 py-4 font-bold text-text-primary">{formatCurrency(o.amount)}</td>
-                <td className="px-6 py-4">
+                <td className="px-6 py-4 text-xs">
                   <div className="flex items-center gap-2">
                     <button onClick={() => handleEdit(o)} className="p-1 text-text-muted hover:text-[var(--color-brand)] transition-colors" title="ערוך">
                       <Pencil className="w-4 h-4" />
@@ -146,11 +147,14 @@ export function Orders() {
                 </td>
               </tr>
             ))}
+            {/* הודעה אם אין הזמנות */}
             {orders.length === 0 && (
               <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-text-muted flex flex-col items-center gap-2">
-                  <ClipboardList className="w-8 h-8 opacity-50" />
-                  <span>אין הזמנות רכש פתוחות במערכת.</span>
+                <td colSpan="6" className="px-6 py-12 text-center text-text-muted">
+                  <div className="flex flex-col items-center gap-2">
+                    <ClipboardList className="w-8 h-8 opacity-50" />
+                    <span>אין הזמנות רכש פתוחות במערכת.</span>
+                  </div>
                 </td>
               </tr>
             )}
@@ -158,6 +162,7 @@ export function Orders() {
         </table>
       </div>
 
+      {/* חלונית להוספה או עריכה של הזמנת רכש */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? "עריכת הזמנה" : "הוספת הזמנת רכש (PO) חדשה"}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>

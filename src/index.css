@@ -1,29 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap');
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&display=swap'); /* מביאים את הפונט הרשמי של האתר */
+@import "tailwindcss"; /* מביאים את כלי העיצוב המהיר */
 
-@theme {
-  --color-brand: #57B9C1;
-  --color-background: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;
+@theme { /* הגדרת הצבעים המרכזיים של המותג */
+  --color-brand: #57B9C1; /* הצבע הטורקיז של ברסוף */
+  --color-background: #f8fafc; /* צבע הרקע של כל האתר */
+  --color-surface: #ffffff; /* צבע של כרטיסיות וחלוניות */
+  --color-surface-hover: #f1f5f9; /* צבע כשעומדים עם העכבר על פריט */
+  --color-border: #e2e8f0; /* צבע הקווים המפרידים */
   
-  /* Status Colors */
-  --color-status-ok: #10b981;       /* Green */
-  --color-status-warning: #f59e0b;  /* Yellow */
-  --color-status-danger: #ef4444;   /* Red */
+  /* צבעי סטטוס להתרעות */
+  --color-status-ok: #10b981;       /* ירוק - תקין */
+  --color-status-warning: #f59e0b;  /* צהוב - אזהרה */
+  --color-status-danger: #ef4444;   /* אדום - חריגה או סכנה */
 
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
+  --color-text-primary: #0f172a; /* צבע טקסט ראשי ובולט */
+  --color-text-secondary: #475569; /* צבע טקסט משני */
+  --color-text-muted: #94a3b8; /* צבע טקסט חלש ועדין */
 }
 
-@layer base {
+@layer base { /* הגדרות בסיסיות לכל האתר */
   :root {
-    color-scheme: light;
+    color-scheme: light; /* מצב בהיר כברירת מחדל */
   }
   
-  .dark {
+  .dark { /* הגדרות למצב כהה (אם נרצה בעתיד) */
     --color-background: #0f172a;
     --color-surface: #1e293b;
     --color-surface-hover: #334155;
@@ -34,9 +34,9 @@
     color-scheme: dark;
   }
   
-  body {
-    @apply bg-background text-text-primary;
-    direction: rtl;
-    font-family: 'Assistant', system-ui, -apple-system, sans-serif;
+  body { /* הגדרות הגוף של הדף */
+    @apply bg-background text-text-primary; /* מחילים את הצבעים שהגדרנו */
+    direction: rtl; /* כתיבה מימין לשמאל בשביל עברית */
+    font-family: 'Assistant', system-ui, -apple-system, sans-serif; /* שימוש בפונט שבחרנו */
   }
 }

@@ -1,25 +1,12 @@
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: v1 # גרסת ה-API
+kind: PersistentVolumeClaim # דרישה לאחסון קבוע
 metadata:
-  name: barsuf-data-pvc
-  namespace: barsuf
+  name: barsuf-data-pvc # שם הדרישה (משמש את השרת כדי לשמור קבצים)
+  namespace: barsuf # מרחב השמות
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteOnce # מאפשר קריאה וכתיבה על ידי עותק אחד של השרת
   resources:
     requests:
-      storage: 5Gi
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ollama-data-pvc
-  namespace: barsuf
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 20Gi
+      storage: 5Gi # נפח האחסון המבוקש (5 ג'יגה מספיק למסמכים ותמונות)

@@ -1,40 +1,47 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { api } from '../services/api';
-import { Loader2, Plus, ReceiptText, Pencil, Trash2 } from 'lucide-react';
-import { Modal } from '../components/ui/Modal';
-import { AIExcelUpload } from '../components/ui/AIExcelUpload';
+import React, { useEffect, useState } from 'react'; // מביאים את הכלים של ריאקט
+import { useParams } from 'react-router-dom'; // כלי לקבלת מספר הפרויקט מהכתובת
+import { api } from '../services/api'; // השליח שמדבר עם השרת
+import { Loader2, Plus, ReceiptText, Pencil, Trash2 } from 'lucide-react'; // אייקונים יפים
+import { Modal } from '../components/ui/Modal'; // חלונית קופצת להוספת נתונים
+import { AIExcelUpload } from '../components/ui/AIExcelUpload'; // כלי להעלאת נתונים מאקסל בעזרת הבינה
 
-const formatCurrency = (value) => {
+const formatCurrency = (value) => { // פונקציה שהופכת מספר לסכום כספי בשקלים
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
 };
 
-export function Expenses() {
-  const { projectId } = useParams();
-  const [expenses, setExpenses] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [budgets, setBudgets] = useState([]);
-  const [contractors, setContractors] = useState([]);
-  const [loading, setLoading] = useState(true);
+export function Expenses() { // דף ניהול הוצאות וחשבוניות
+  const { projectId } = useParams(); // לוקחים את מספר הפרויקט מהכתובת
+  const [expenses, setExpenses] = useState([]); // רשימת ההוצאות שנשמרת כאן
+  const [projects, setProjects] = useState([]); // רשימת הפרויקטים (לצורך בחירה אם צריך)
+  const [budgets, setBudgets] = useState([]); // רשימת סעיפי התקציב
+  const [contractors, setContractors] = useState([]); // רשימת הקבלנים
+  const [loading, setLoading] = useState(true); // האם אנחנו מחכים למידע מהשרת
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ project_id: projectId, budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false); // האם החלונית להוספת הוצאה פתוחה
+  const [formData, setFormData] = useState({ // הנתונים שהמשתמש ממלא בטופס ההוצאה
+    project_id: projectId, 
+    budget_id: '', 
+    contractor_id: '', 
+    amount: '', 
+    date: new Date().toISOString().split('T')[0], 
+    description: '' 
+  });
+  const [submitting, setSubmitting] = useState(false); // האם אנחנו באמצע שמירת נתונים
+  const [editingId, setEditingId] = useState(null); // אם אנחנו עורכים הוצאה קיימת, כאן נשמר המספר שלה
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = async () => { // פונקציה שמביאה את כל ההוצאות מהשרת
     try {
-      const data = await api.getExpenses();
-      const projectExpenses = data.filter(e => e.project_id === Number(projectId));
-      setExpenses(projectExpenses);
+      const data = await api.getExpenses(); // מבקשים את רשימת ההוצאות
+      const projectExpenses = data.filter(e => e.project_id === Number(projectId)); // מסננים רק את ההוצאות של הפרויקט הנוכחי
+      setExpenses(projectExpenses); // מעדכנים את הרשימה על המסך
     } catch (error) {
-      console.error(error);
+      console.error(error); // רישום שגיאה
     } finally {
-      setLoading(false);
+      setLoading(false); // הפסקת מצב טעינה
     }
   };
 
-  const fetchDependencies = async () => {
+  const fetchDependencies = async () => { // מביאים נתונים נוספים שצריך בשביל הטופס
     try {
       const [p, b, c] = await Promise.all([
         api.getProjects(),
@@ -49,50 +56,50 @@ export function Expenses() {
     }
   };
 
-  useEffect(() => {
+  useEffect(() => { // הבאת כל הנתונים ברגע שהדף עולה
     fetchExpenses();
     fetchDependencies();
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
+  const handleSubmit = async (e) => { // שמירת הוצאה חדשה או עריכת קיימת
+    e.preventDefault(); // מניעת רענון הדף
+    setSubmitting(true); // מצב שמירה
     try {
-      if (editingId) {
+      if (editingId) { // אם אנחנו בעריכה
         await api.updateResource('expenses', editingId, {
           ...formData,
           project_id: projectId,
           amount: Number(formData.amount)
         });
-      } else {
+      } else { // אם אנחנו ביצירת הוצאה חדשה
         await api.createExpense({
           ...formData,
           project_id: projectId,
           amount: Number(formData.amount)
         });
       }
-      setIsModalOpen(false);
-      setEditingId(null);
-      setFormData({ project_id: projectId, budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
-      await fetchExpenses();
+      setIsModalOpen(false); // סגירת החלונית
+      setEditingId(null); // איפוס עריכה
+      setFormData({ project_id: projectId, budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' }); // ניקוי טופס
+      await fetchExpenses(); // רענון הרשימה
     } catch (error) {
-      console.error('Failed to save expense:', error);
+      console.error('Failed to save expense:', error); // במקרה של תקלה
     } finally {
-      setSubmitting(false);
+      setSubmitting(false); // סיום מצב שמירה
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('האם אתה בטוח שברצונך למחוק הוצאה זו?')) return;
+  const handleDelete = async (id) => { // מחיקת הוצאה מהמערכת
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק הוצאה זו?')) return; // בקשת אישור
     try {
-      await api.deleteResource('expenses', id);
-      await fetchExpenses();
+      await api.deleteResource('expenses', id); // מחיקה בשרת
+      await fetchExpenses(); // רענון הרשימה
     } catch (error) {
       console.error('Failed to delete:', error);
     }
   };
 
-  const handleEdit = (expense) => {
+  const handleEdit = (expense) => { // הכנת הטופס לעריכה עם נתונים קיימים
     setEditingId(expense.id);
     setFormData({
       project_id: expense.project_id,
@@ -105,19 +112,19 @@ export function Expenses() {
     setIsModalOpen(true);
   };
 
-  const availableBudgets = budgets.filter(b => b.project_id.toString() === projectId);
+  const availableBudgets = budgets.filter(b => b.project_id.toString() === projectId); // מסננים רק את סעיפי התקציב ששייכים לפרויקט הזה
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>; // סמל טעינה
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">הוצאות וחשבוניות</h1>
+          <h1 className="text-2xl font-bold text-text-primary">הוצאות וחשבוניות</h1> {/* כותרת הדף */}
           <p className="text-text-secondary text-sm">מעקב אחר כלל ההוצאות בפרויקטים</p>
         </div>
         <div className="flex items-center gap-4">
-          <AIExcelUpload projectId={projectId} targetTable="expenses" onSuccess={fetchExpenses} />
+          <AIExcelUpload projectId={projectId} targetTable="expenses" onSuccess={fetchExpenses} /> {/* העלאת אקסל חכמה */}
           <button 
             onClick={() => {
               setEditingId(null);
@@ -133,6 +140,7 @@ export function Expenses() {
       </div>
 
       <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+        {/* טבלת ההוצאות */}
         <table className="w-full text-right">
           <thead className="bg-surface-hover/50 border-b border-border text-sm text-text-secondary">
             <tr>
@@ -162,7 +170,7 @@ export function Expenses() {
                 <td className="px-6 py-4 text-sm text-text-secondary">{new Date(e.date).toLocaleDateString('he-IL')}</td>
                 <td className="px-6 py-4 font-bold text-text-primary">{formatCurrency(e.amount)}</td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-xs">
                     <button onClick={() => handleEdit(e)} className="p-1 text-text-muted hover:text-blue-500 transition-colors" title="ערוך">
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -173,13 +181,15 @@ export function Expenses() {
                 </td>
               </tr>
             ))}
+            {/* אם אין הוצאות עדיין */}
             {expenses.length === 0 && (
-              <tr><td colSpan="6" className="px-6 py-8 text-center text-text-muted">אין הוצאות במערכת.</td></tr>
+              <tr><td colSpan="6" className="px-6 py-8 text-center text-text-muted">אין הוצאות במערכת. כדאי להוסיף או להעלות חשבוניות.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
+      {/* חלונית להוספה או עריכה של הוצאה */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingId ? "עריכת הוצאה" : "הוספת הוצאה חדשה"}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>

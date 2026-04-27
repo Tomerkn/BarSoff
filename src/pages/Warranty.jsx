@@ -1,16 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Loader2, Plus, ShieldCheck, AlertCircle, Wrench } from 'lucide-react';
-import { Modal } from '../components/ui/Modal';
+import React, { useEffect, useState } from 'react'; // מביאים את הכלים של ריאקט
+import { useParams } from 'react-router-dom'; // כלי לקבלת מספר הפרויקט מהכתובת
+import { Loader2, Plus, ShieldCheck, AlertCircle, Wrench } from 'lucide-react'; // אייקונים יפים
+import { Modal } from '../components/ui/Modal'; // חלונית קופצת להוספת נתונים
 
-export function Warranty() {
-  const { projectId } = useParams();
-  const [tickets, setTickets] = useState([]);
-  const [contractors, setContractors] = useState([]);
-  const [loading, setLoading] = useState(true);
+export function Warranty() { // דף ניהול קריאות שירות (שנת בדק)
+  const { projectId } = useParams(); // לוקחים את מספר הפרויקט מהכתובת
+  const [tickets, setTickets] = useState([]); // רשימת קריאות השירות שנשמרת כאן
+  const [contractors, setContractors] = useState([]); // רשימת הקבלנים
+  const [loading, setLoading] = useState(true); // האם אנחנו מחכים למידע מהשרת
   
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ 
+  const [isModalOpen, setIsModalOpen] = useState(false); // האם החלונית להוספת קריאה פתוחה
+  const [formData, setFormData] = useState({ // הנתונים שהמשתמש ממלא בטופס
     customer_name: '', 
     issue_description: '', 
     contractor_id: '', 
@@ -20,9 +20,9 @@ export function Warranty() {
     notes: ''
   });
   
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // האם אנחנו באמצע שמירת נתונים
 
-  const fetchData = async () => {
+  const fetchData = async () => { // פונקציה שמביאה את כל הקריאות והקבלנים מהשרת
     try {
       const [ticketsRes, contractorsRes] = await Promise.all([
         fetch(`/api/warranty-tickets?projectId=${projectId}`),
@@ -36,17 +36,17 @@ export function Warranty() {
     } catch (error) {
       console.error(error);
     } finally {
-      setLoading(false);
+      setLoading(false); // סיום מצב טעינה
     }
   };
 
-  useEffect(() => {
+  useEffect(() => { // הבאת הנתונים ברגע שהדף עולה
     fetchData();
   }, [projectId]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleSubmit = async (e) => { // שמירת קריאה חדשה
+    e.preventDefault(); // מניעת רענון הדף
+    setIsSubmitting(true); // מצב שמירה
     
     try {
       const payload = {
@@ -61,8 +61,8 @@ export function Warranty() {
         body: JSON.stringify(payload)
       });
       
-      setIsModalOpen(false);
-      setFormData({ 
+      setIsModalOpen(false); // סגירת החלונית
+      setFormData({ // ניקוי הטופס
         customer_name: '', 
         issue_description: '', 
         contractor_id: '', 
@@ -71,16 +71,16 @@ export function Warranty() {
         close_date: '',
         notes: ''
       });
-      await fetchData();
+      await fetchData(); // רענון הרשימה
     } catch (error) {
       console.error('Failed to create ticket:', error);
       alert('שגיאה בפתיחת קריאת שירות');
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false); // סיום מצב שמירה
     }
   };
 
-  const updateStatus = async (id, newStatus) => {
+  const updateStatus = async (id, newStatus) => { // עדכון סטטוס של קריאה קיימת
     try {
       const ticket = tickets.find(t => t.id === id);
       const closeDate = newStatus === 'סגור' ? new Date().toISOString().split('T')[0] : ticket.close_date;
@@ -90,13 +90,13 @@ export function Warranty() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...ticket, status: newStatus, close_date: closeDate })
       });
-      await fetchData();
+      await fetchData(); // רענון הרשימה
     } catch (error) {
       console.error(error);
     }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>; // סמל טעינה
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -105,7 +105,7 @@ export function Warranty() {
           <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-[var(--color-brand)]" />
             חוק מכר (שנת בדק)
-          </h1>
+          </h1> {/* כותרת הדף */}
           <p className="text-text-secondary text-sm mt-1">ניהול קריאות שירות, תקלות ואחריות לאחר מסירה</p>
         </div>
         <button 
@@ -118,6 +118,7 @@ export function Warranty() {
       </div>
 
       <div className="bg-surface border border-border rounded-xl shadow-sm overflow-hidden">
+        {/* טבלת קריאות שירות */}
         <table className="w-full text-right">
           <thead className="bg-surface-hover/50 border-b border-border text-sm text-text-secondary">
             <tr>
@@ -153,18 +154,19 @@ export function Warranty() {
                     value={t.status}
                     onChange={(e) => updateStatus(t.id, e.target.value)}
                   >
-                    <option value="פתוח" className="text-black bg-white">🔴 פתוח</option>
-                    <option value="בטיפול" className="text-black bg-white">🟠 בטיפול קבלן</option>
-                    <option value="סגור" className="text-black bg-white">🟢 סגור / טופל</option>
+                    <option value="פתוח" className="text-black bg-white">פתוח</option>
+                    <option value="בטיפול" className="text-black bg-white">בטיפול קבלן</option>
+                    <option value="סגור" className="text-black bg-white">סגור / טופל</option>
                   </select>
                 </td>
               </tr>
             ))}
+            {/* הודעה אם אין קריאות שירות */}
             {tickets.length === 0 && (
               <tr>
                 <td colSpan="6" className="px-6 py-12 text-center text-text-muted flex flex-col items-center justify-center">
                   <AlertCircle className="w-8 h-8 opacity-50 mb-2" />
-                  <p>אין קריאות שירות פתוחות.</p>
+                  <p>אין קריאות שירות פתוחות כרגע.</p>
                 </td>
               </tr>
             )}
@@ -172,6 +174,7 @@ export function Warranty() {
         </table>
       </div>
 
+      {/* חלונית לפתיחת קריאת שירות חדשה */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="פתיחת קריאת שירות (בדק)">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
