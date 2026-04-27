@@ -80,7 +80,7 @@ export const askQuestion = async (projectId, question) => {
     }
 
     // המודל המתקדם והמהיר של גוגל
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // יצירת מערך שכולל את כל הקבצים וגם את ההוראה + השאלה
     const promptParts = [

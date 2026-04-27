@@ -136,7 +136,7 @@ export function ProjectChat({ projectId }) {
       setMessages(prev => [...prev, { id: Date.now(), type: 'bot', text: data.answer }]);
     } catch (error) {
       console.error('Error in chat:', error);
-      setMessages(prev => [...prev, { id: Date.now(), type: 'error', text: 'מצטער, חלה שגיאה בתקשורת עם מנוע ה-AI. ודא ש-Ollama פועל ברקע.' }]);
+      setMessages(prev => [...prev, { id: Date.now(), type: 'error', text: 'מצטער, חלה שגיאה בתקשורת עם מנוע ה-AI של גוגל (Gemini).' }]);
     } finally {
       setLoading(false);
     }
