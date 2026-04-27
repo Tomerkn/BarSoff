@@ -10,8 +10,8 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-# Install build tools for native dependencies and OCR image conversion
-RUN apk add --no-cache python3 make g++ ghostscript graphicsmagick
+# Install build tools for native dependencies
+RUN apk add --no-cache python3 make g++ 
 
 # Copy package info and install production deps
 COPY package*.json ./
