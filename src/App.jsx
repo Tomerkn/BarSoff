@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { Dashboard } from './pages/Dashboard';
@@ -16,19 +16,46 @@ import { ProjectIncomes } from './pages/ProjectIncomes';
 import { DailyLogs } from './pages/DailyLogs';
 import { Warranty } from './pages/Warranty';
 import { AIFloatingWidget } from './components/ui/AIFloatingWidget';
+import { ProfileSelection } from './pages/ProfileSelection';
 
 function AppContent() {
+  const [selectedProfile, setSelectedProfile] = useState(() => {
+    const saved = localStorage.getItem('barsuf_profile');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const match = location.pathname.match(/\/projects\/(\d+)/);
   const currentProjectId = match ? match[1] : null;
+
+  const handleProfileSelect = (profile) => {
+    setSelectedProfile(profile);
+    localStorage.setItem('barsuf_profile', JSON.stringify(profile));
+    window.location.href = '/'; // Go to root after login
+  };
+
+  const handleLogout = () => {
+    console.log("Logging out...");
+    localStorage.removeItem('barsuf_profile');
+    setSelectedProfile(null);
+    window.location.href = '/'; // Redirect to root to show profile selection
+  };
+
+  if (!selectedProfile) {
+    return <ProfileSelection onSelect={handleProfileSelect} />;
+  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden text-text-primary" dir="rtl">
       <Sidebar isOpen={isMobileMenuOpen} setIsOpen={setIsMobileMenuOpen} />
       
       <div className="flex-1 flex flex-col md:pr-64 h-full overflow-hidden w-full transition-all duration-300">
-        <Header toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+        <Header 
+          toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+          profile={selectedProfile}
+          onLogout={handleLogout}
+        />
         <main className="flex-1 overflow-y-auto relative">
           <Routes>
             <Route path="/" element={<Projects />} />
@@ -64,3 +91,4 @@ function App() {
 }
 
 export default App;
+

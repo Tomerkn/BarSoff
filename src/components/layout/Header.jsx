@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Search, User, LogOut, Settings as SettingsIcon, Menu, Moon, Sun } from 'lucide-react';
 
-export function Header({ toggleMobileMenu }) {
+export function Header({ toggleMobileMenu, profile, onLogout }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef(null);
 
@@ -70,30 +70,46 @@ export function Header({ toggleMobileMenu }) {
         </button>
         <div className="relative" ref={profileRef}>
           <div 
-            className="flex items-center gap-2 cursor-pointer p-1 rounded-full hover:bg-surface-hover pr-3"
+            className="flex items-center gap-2 cursor-pointer p-1 rounded-full hover:bg-surface-hover pr-3 transition-colors"
             onClick={() => setIsProfileOpen(!isProfileOpen)}
           >
-            <div className="w-8 h-8 rounded-full bg-[var(--color-brand)]/10 flex items-center justify-center text-[var(--color-brand)] font-bold">
-              ת
+            <div className="w-8 h-8 rounded-full border border-border overflow-hidden">
+              <img src={profile?.avatar} alt={profile?.name} className="w-full h-full object-cover" />
             </div>
-            <span className="text-sm font-medium hidden sm:block mr-2 text-text-primary">תומר קנובלר</span>
+            <div className="hidden sm:flex flex-col items-start mr-1">
+              <span className="text-xs font-bold text-text-primary leading-none mb-0.5">{profile?.name}</span>
+              <span className="text-[10px] text-brand font-medium leading-none">{profile?.role}</span>
+            </div>
           </div>
 
           {isProfileOpen && (
             <div className="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-surface border border-border py-1 z-50">
-              <button className="w-full text-right px-4 py-2 text-sm text-text-primary hover:bg-surface-hover flex items-center gap-2">
-                <User className="w-4 h-4" />
+              <div className="px-4 py-2 border-b border-border sm:hidden">
+                <p className="text-sm font-bold text-text-primary">{profile?.name}</p>
+                <p className="text-[10px] text-brand">{profile?.role}</p>
+              </div>
+              <button className="w-full text-right px-4 py-2 text-sm text-text-primary hover:bg-surface-hover flex items-center gap-2 transition-colors">
+                <User className="w-4 h-4 text-text-muted" />
                 הפרופיל שלי
               </button>
-              <button className="w-full text-right px-4 py-2 text-sm text-text-primary hover:bg-surface-hover flex items-center gap-2">
-                <SettingsIcon className="w-4 h-4" />
+              <button className="w-full text-right px-4 py-2 text-sm text-text-primary hover:bg-surface-hover flex items-center gap-2 transition-colors">
+                <SettingsIcon className="w-4 h-4 text-text-muted" />
                 הגדרות
               </button>
               <div className="border-t border-border my-1"></div>
-              <button className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors">
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onLogout();
+                }}
+                className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors font-medium cursor-pointer"
+              >
                 <LogOut className="w-4 h-4" />
-                התנתק
+                <span>החלף פרופיל / התנתק</span>
               </button>
+
             </div>
           )}
         </div>
@@ -101,3 +117,4 @@ export function Header({ toggleMobileMenu }) {
     </header>
   );
 }
+
