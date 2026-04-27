@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { Loader2, Plus, ReceiptText } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
@@ -8,6 +9,7 @@ const formatCurrency = (value) => {
 };
 
 export function Expenses() {
+  const { projectId } = useParams();
   const [expenses, setExpenses] = useState([]);
   const [projects, setProjects] = useState([]);
   const [budgets, setBudgets] = useState([]);
@@ -15,13 +17,14 @@ export function Expenses() {
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ project_id: '', budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
+  const [formData, setFormData] = useState({ project_id: projectId, budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
   const [submitting, setSubmitting] = useState(false);
 
   const fetchExpenses = async () => {
     try {
       const data = await api.getExpenses();
-      setExpenses(data);
+      const projectExpenses = data.filter(e => e.project_id === Number(projectId));
+      setExpenses(projectExpenses);
     } catch (error) {
       console.error(error);
     } finally {
@@ -55,10 +58,11 @@ export function Expenses() {
     try {
       await api.createExpense({
         ...formData,
-        amount: Number(formData.amount)
+        amount: Number(formData.amount),
+        project_id: projectId
       });
       setIsModalOpen(false);
-      setFormData({ project_id: '', budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
+      setFormData({ project_id: projectId, budget_id: '', contractor_id: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
       await fetchExpenses();
     } catch (error) {
       console.error('Failed to create expense:', error);
@@ -67,7 +71,7 @@ export function Expenses() {
     }
   };
 
-  const availableBudgets = formData.project_id ? budgets.filter(b => b.project_id.toString() === formData.project_id) : budgets;
+  const availableBudgets = budgets.filter(b => b.project_id.toString() === projectId);
 
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-[var(--color-brand)] w-8 h-8" /></div>;
 
@@ -127,22 +131,10 @@ export function Expenses() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="הוספת הוצאה חדשה">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">פרויקט</label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">סעיף תקציבי</label>
             <select 
               required
               className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-[var(--color-brand)]"
-              value={formData.project_id} onChange={e => setFormData({...formData, project_id: e.target.value, budget_id: ''})}
-            >
-              <option value="" disabled>בחר פרויקט</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">סעיף תקציבי</label>
-            <select 
-              required disabled={!formData.project_id}
-              className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-[var(--color-brand)] disabled:opacity-50"
               value={formData.budget_id} onChange={e => setFormData({...formData, budget_id: e.target.value})}
             >
               <option value="" disabled>בחר סעיף</option>

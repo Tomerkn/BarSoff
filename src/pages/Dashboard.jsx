@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { KpiCard } from '../components/ui/KpiCard';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2 } from 'lucide-react';
@@ -13,33 +14,13 @@ const formatCurrency = (value) => {
 };
 
 export function Dashboard() {
+  const { projectId } = useParams();
   const [data, setData] = useState(null);
-  const [projects, setProjects] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch all projects on mount
+  // Fetch analytics when projectId changes
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const pList = await api.getProjects();
-        setProjects(pList);
-        if (pList.length > 0) {
-          setSelectedProjectId(pList[0].id);
-        } else {
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-        setLoading(false);
-      }
-    };
-    fetchProjects();
-  }, []);
-
-  // Fetch analytics when selectedProjectId changes
-  useEffect(() => {
-    if (!selectedProjectId) return;
+    if (!projectId) return;
     
     const fetchAnalytics = async () => {
       setLoading(true);
@@ -53,7 +34,7 @@ export function Dashboard() {
       }
     };
     fetchAnalytics();
-  }, [selectedProjectId]);
+  }, [projectId]);
 
   if (loading) {
     return (
@@ -63,16 +44,7 @@ export function Dashboard() {
     );
   }
 
-  if (!projects || projects.length === 0) {
-    return (
-      <div className="p-8 text-center flex flex-col items-center justify-center h-full text-text-muted">
-        <h2 className="text-xl font-bold mb-2 text-text-primary">אין פרויקטים להצגה</h2>
-        <p>נא להוסיף פרויקט חדש דרך תפריט הפרויקטים כדי לראות נתונים בדאשבורד.</p>
-      </div>
-    );
-  }
-
-  if (!data) return <div className="p-8">שגיאה בטעינת נתונים.</div>;
+  if (!data) return <div className="p-8">שגיאה בטעינת נתונים או פרויקט לא נמצא.</div>;
 
   const { project, totalBudget, actualExecution, variance, utilization, breakdown } = data;
 
@@ -92,16 +64,7 @@ export function Dashboard() {
       <div className="mb-8 flex justify-between items-end bg-surface p-4 rounded-xl border border-border shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-text-primary mb-2 flex items-center gap-3">
-            דאשבורד פרויקט:
-            <select 
-              value={selectedProjectId || ''}
-              onChange={(e) => setSelectedProjectId(Number(e.target.value))}
-              className="bg-transparent border-b-2 border-[var(--color-brand)] focus:outline-none text-text-primary pb-1"
-            >
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            {project.name}
           </h1>
           <p className="text-text-secondary text-sm">{project.location} • צפי סיום: {new Date(project.end_date).toLocaleDateString('he-IL')}</p>
         </div>
@@ -175,13 +138,13 @@ export function Dashboard() {
       </div>
 
       {/* Project Gantt Chart */}
-      <ProjectGantt projectId={selectedProjectId} />
+      <ProjectGantt projectId={projectId} />
 
       {/* Project Media & Gallery */}
-      <ProjectMedia projectId={selectedProjectId} />
+      <ProjectMedia projectId={projectId} />
 
       {/* Floating AI Widget */}
-      <AIFloatingWidget projectId={selectedProjectId} />
+      <AIFloatingWidget projectId={projectId} />
     </div>
   );
 }

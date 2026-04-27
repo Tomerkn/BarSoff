@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation, useParams } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Briefcase, 
@@ -13,18 +13,29 @@ import {
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 
-const navItems = [
-  { name: 'דאשבורד פרויקט', path: '/', icon: LayoutDashboard },
-  { name: 'פרויקטים', path: '/projects', icon: Briefcase },
-  { name: 'תקציב', path: '/budget', icon: Wallet },
-  { name: 'הוצאות', path: '/expenses', icon: ReceiptText },
-  { name: 'קבלנים', path: '/contractors', icon: HardHat },
-  { name: 'הזמנות רכש', path: '/orders', icon: ClipboardList },
-  { name: 'דוחות', path: '/reports', icon: BarChart3 },
+const globalNavItems = [
+  { name: 'כל הפרויקטים', path: '/', icon: Briefcase },
+  { name: 'דאשבורד ארגוני', path: '/overview', icon: LayoutDashboard },
+];
+
+const getProjectNavItems = (projectId) => [
+  { name: 'דאשבורד פרויקט', path: `/projects/${projectId}`, icon: LayoutDashboard },
+  { name: 'תקציב', path: `/projects/${projectId}/budget`, icon: Wallet },
+  { name: 'הוצאות', path: `/projects/${projectId}/expenses`, icon: ReceiptText },
+  { name: 'קבלנים', path: `/projects/${projectId}/contractors`, icon: HardHat },
+  { name: 'הזמנות רכש', path: `/projects/${projectId}/orders`, icon: ClipboardList },
+  { name: 'דוחות', path: `/projects/${projectId}/reports`, icon: BarChart3 },
 ];
 
 export function Sidebar({ isOpen, setIsOpen }) {
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const location = useLocation();
+  
+  // Extract projectId if we are under /projects/:id
+  const match = location.pathname.match(/\/projects\/(\d+)/);
+  const currentProjectId = match ? match[1] : null;
+
+  const currentNavItems = currentProjectId ? getProjectNavItems(currentProjectId) : globalNavItems;
 
   return (
     <>
@@ -46,12 +57,26 @@ export function Sidebar({ isOpen, setIsOpen }) {
       </div>
       
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {navItems.map((item) => {
+        {currentProjectId && (
+          <div className="mb-4 pb-4 border-b border-border">
+            <NavLink
+              to="/"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-colors"
+            >
+              <Briefcase className="w-4 h-4" />
+              חזרה לכל הפרויקטים
+            </NavLink>
+          </div>
+        )}
+        
+        {currentNavItems.map((item) => {
           const Icon = item.icon;
           return (
             <NavLink
               key={item.path}
               to={item.path}
+              end={item.path === `/projects/${currentProjectId}` || item.path === '/'}
               onClick={() => setIsOpen(false)} // סוגר את התפריט בטלפון אחרי שלוחצים על קישור
               className={({ isActive }) => clsx(
                 "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm font-medium",

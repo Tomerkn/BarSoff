@@ -25,13 +25,15 @@ function App() {
           <Header toggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           <main className="flex-1 overflow-y-auto">
             <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/projects" element={<Projects />} />
-              <Route path="/budget" element={<Budget />} />
-              <Route path="/expenses" element={<Expenses />} />
-              <Route path="/contractors" element={<Contractors />} />
-              <Route path="/orders" element={<Orders />} />
-              <Route path="/reports" element={<Reports />} />
+              <Route path="/" element={<Projects />} />
+              <Route path="/overview" element={<div className="p-8">דאשבורד ארגוני כללי - יפותח בהמשך</div>} />
+              
+              <Route path="/projects/:projectId" element={<Dashboard />} />
+              <Route path="/projects/:projectId/budget" element={<Budget />} />
+              <Route path="/projects/:projectId/expenses" element={<Expenses />} />
+              <Route path="/projects/:projectId/contractors" element={<Contractors />} />
+              <Route path="/projects/:projectId/orders" element={<Orders />} />
+              <Route path="/projects/:projectId/reports" element={<Reports />} />
               <Route path="*" element={<div className="p-8 text-center text-text-muted">עמוד בבנייה...</div>} />
             </Routes>
           </main>

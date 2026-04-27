@@ -61,7 +61,7 @@ export function Projects() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects.map(project => (
-          <Link to="/" key={project.id} className="bg-surface border border-border rounded-xl p-6 shadow-sm hover:shadow-md hover:border-[var(--color-brand)] transition-all cursor-pointer block">
+          <Link to={`/projects/${project.id}`} key={project.id} className="bg-surface border border-border rounded-xl p-6 shadow-sm hover:shadow-md hover:border-[var(--color-brand)] transition-all cursor-pointer block">
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 rounded-lg bg-[var(--color-brand)]/10 flex items-center justify-center text-[var(--color-brand)]">
                 <Briefcase className="w-5 h-5" />

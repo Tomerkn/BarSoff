@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { Loader2, Plus, ClipboardList } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
@@ -8,12 +9,13 @@ const formatCurrency = (value) => {
 };
 
 export function Orders() {
+  const { projectId } = useParams();
   const [orders, setOrders] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ project_id: '', supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' });
+  const [formData, setFormData] = useState({ project_id: projectId, supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' });
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = async () => {
@@ -22,7 +24,8 @@ export function Orders() {
         api.getOrders(),
         api.getProjects()
       ]);
-      setOrders(ordersData);
+      const projectOrders = ordersData.filter(o => o.project_id === Number(projectId));
+      setOrders(projectOrders);
       setProjects(projectsData);
     } catch (error) {
       console.error(error);
@@ -41,10 +44,11 @@ export function Orders() {
     try {
       await api.createOrder({
         ...formData,
+        project_id: projectId,
         amount: Number(formData.amount)
       });
       setIsModalOpen(false);
-      setFormData({ project_id: '', supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' });
+      setFormData({ project_id: projectId, supplier_name: '', item_description: '', amount: '', order_date: new Date().toISOString().split('T')[0], status: 'פתוח' });
       await fetchData();
     } catch (error) {
       console.error('Failed to create order:', error);
@@ -76,7 +80,6 @@ export function Orders() {
           <thead className="bg-surface-hover/50 border-b border-border text-sm text-text-secondary">
             <tr>
               <th className="px-6 py-4 font-medium">מס' הזמנה</th>
-              <th className="px-6 py-4 font-medium">פרויקט</th>
               <th className="px-6 py-4 font-medium">ספק/קבלן</th>
               <th className="px-6 py-4 font-medium">תיאור</th>
               <th className="px-6 py-4 font-medium">תאריך</th>
@@ -89,7 +92,6 @@ export function Orders() {
                 <td className="px-6 py-4 text-sm font-bold text-text-primary">
                   PO-{o.id.toString().padStart(4, '0')}
                 </td>
-                <td className="px-6 py-4 text-sm text-text-secondary">{o.project_name}</td>
                 <td className="px-6 py-4 text-sm text-text-primary">{o.supplier_name}</td>
                 <td className="px-6 py-4 text-sm text-text-primary">{o.item_description}</td>
                 <td className="px-6 py-4 text-sm text-text-secondary">{new Date(o.order_date).toLocaleDateString('he-IL')}</td>
@@ -98,7 +100,7 @@ export function Orders() {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colSpan="6" className="px-6 py-12 text-center text-text-muted flex flex-col items-center gap-2">
+                <td colSpan="5" className="px-6 py-12 text-center text-text-muted flex flex-col items-center gap-2">
                   <ClipboardList className="w-8 h-8 opacity-50" />
                   <span>אין הזמנות רכש פתוחות במערכת.</span>
                 </td>
@@ -110,17 +112,6 @@ export function Orders() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="הוספת הזמנת רכש (PO) חדשה">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">פרויקט משויך</label>
-            <select 
-              required
-              className="w-full bg-surface border border-border rounded-lg px-4 py-2 text-text-primary focus:outline-none focus:border-[var(--color-brand)]"
-              value={formData.project_id} onChange={e => setFormData({...formData, project_id: e.target.value})}
-            >
-              <option value="" disabled>בחר פרויקט</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">שם הספק / קבלן</label>
             <input 
