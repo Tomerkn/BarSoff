@@ -23,6 +23,17 @@ function initDB() {
       status TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS project_media (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER,
+      filename TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      mime_type TEXT,
+      upload_date TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id)
+    );
+
     CREATE TABLE IF NOT EXISTS files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER,

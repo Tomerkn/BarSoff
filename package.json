@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@google/generative-ai": "^0.24.1",
     "@tailwindcss/vite": "^4.2.4",
     "better-sqlite3": "^12.9.0",

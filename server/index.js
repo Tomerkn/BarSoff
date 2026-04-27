@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { Storage } from '@google-cloud/storage';
 import db from './db.js';
 import './seed.js'; // Ensure database is seeded
 import { ingestDocument, askQuestion } from './ai.js';
@@ -26,6 +27,10 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
+
+// Initialize Google Cloud Storage
+const storageClient = new Storage();
+const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'barsuf-media-storage-1777314059';
 
 app.use(cors());
 app.use(express.json());
@@ -176,12 +181,54 @@ app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => {
     res.status(201).json({ success: true, message: 'File uploaded and processed' });
   } catch (error) {
     console.error('Upload error:', error);
-    if (error.cause && error.cause.code === 'ECONNREFUSED') {
-      return res.status(503).json({ error: 'Ollama is not running. Please start the Ollama application.' });
-    }
-    // החזר את הודעת השגיאה הספציפית אם יש כזו (כמו במקרה של קובץ סרוק), אחרת הודעה כללית
-    const errorMessage = error.message || 'Failed to process file. Make sure Ollama is running and model llama3 is installed.';
+    const errorMessage = error.message || 'Failed to process file with Gemini AI.';
     res.status(500).json({ error: errorMessage });
+  }
+});
+
+// Project Media (Gallery) API
+app.get('/api/projects/:id/media', (req, res) => {
+  const media = db.prepare('SELECT * FROM project_media WHERE project_id = ? ORDER BY upload_date DESC').all(req.params.id);
+  res.json(media);
+});
+
+app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const projectId = req.params.id;
+  const originalName = req.file.originalname;
+  const filePath = req.file.path;
+  const mimeType = req.file.mimetype;
+  
+  // To avoid special characters in GCS URL, encode filename safely or use a simple timestamp
+  const safeFilename = encodeURIComponent(originalName.replace(/\s+/g, '-'));
+  const destination = `projects/${projectId}/${Date.now()}-${safeFilename}`;
+  
+  try {
+    // Upload to GCS
+    await storageClient.bucket(BUCKET_NAME).upload(filePath, {
+      destination: destination,
+      metadata: {
+        contentType: mimeType,
+        cacheControl: 'public, max-age=31536000',
+      }
+    });
+    
+    // The bucket is public, so we can generate the public URL directly
+    const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${destination}`;
+    
+    // Save to DB
+    const insert = db.prepare('INSERT INTO project_media (project_id, filename, original_name, url, mime_type, upload_date) VALUES (?, ?, ?, ?, ?, ?)');
+    insert.run(projectId, req.file.filename, originalName, publicUrl, mimeType, new Date().toISOString());
+    
+    // Clean up local file since it's uploaded to cloud
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    
+    res.status(201).json({ success: true, url: publicUrl, message: 'Media uploaded successfully' });
+  } catch (error) {
+    console.error('Media upload error:', error);
+    res.status(500).json({ error: 'Failed to upload media to cloud storage' });
   }
 });
 
@@ -194,7 +241,7 @@ app.post('/api/projects/:id/chat', async (req, res) => {
     res.json({ answer });
   } catch (error) {
     console.error('Chat error:', error);
-    res.status(500).json({ error: 'Failed to get answer. Make sure Ollama is running.' });
+    res.status(500).json({ error: 'Failed to get answer from AI engine.' });
   }
 });
 

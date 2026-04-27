@@ -5,6 +5,7 @@ import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2 } from 'lucide-reac
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { api } from '../services/api';
 import { AIFloatingWidget } from '../components/ui/AIFloatingWidget';
+import { ProjectMedia } from '../components/ui/ProjectMedia';
 
 const formatCurrency = (value) => {
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
@@ -171,6 +172,9 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Project Media & Gallery */}
+      <ProjectMedia projectId={selectedProjectId} />
 
       {/* Floating AI Widget */}
       <AIFloatingWidget projectId={selectedProjectId} />
