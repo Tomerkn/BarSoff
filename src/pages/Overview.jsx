@@ -1,18 +1,47 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../services/api';
-import { KpiCard } from '../components/ui/KpiCard';
-import { Briefcase, Wallet, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { KpiCard } from '../components/ui/KpiCard';
+import { Briefcase, Wallet, AlertTriangle, CheckCircle, Loader2, TrendingDown, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
+};
 
 export function Overview() {
-  const [projects, setProjects] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [projectsData, setProjectsData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchOverview = async () => {
       try {
-        const pList = await api.getProjects();
-        setProjects(pList);
+        const [globalRes, projectsRes] = await Promise.all([
+          fetch('/api/analytics/global'),
+          fetch('/api/projects')
+        ]);
+        
+        const globalData = await globalRes.json();
+        setAnalytics(globalData);
+        
+        const pList = await projectsRes.json();
+        
+        // Fetch specific analytics for top 5 active projects to show in a chart
+        const activeProjects = pList.filter(p => p.status === 'תקין');
+        const projectStats = await Promise.all(
+          activeProjects.slice(0, 5).map(async (p) => {
+            const res = await fetch(`/api/projects/${p.id}/analytics`);
+            const data = await res.json();
+            return {
+              name: p.name,
+              budget: data.totalBudget,
+              expenses: data.actualExecution,
+              id: p.id
+            };
+          })
+        );
+        
+        setProjectsData(projectStats);
       } catch (error) {
         console.error('Error fetching overview data:', error);
       } finally {
@@ -30,64 +59,92 @@ export function Overview() {
     );
   }
 
-  const activeProjectsCount = projects.length;
-  // Placeholder metrics since we don't fetch all global analytics yet.
-  // In a real app, we'd have an endpoint for global analytics.
-  const projectsWithAlerts = projects.filter(p => p.status !== 'תקין').length;
-  const healthyProjects = activeProjectsCount - projectsWithAlerts;
-
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-text-primary">דאשבורד מנהל</h1>
-        <p className="text-text-secondary text-sm">מבט על על כלל הפרויקטים בחברה</p>
+    <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary">דאשבורד מנהל ארגוני</h1>
+        <p className="text-text-secondary text-sm">מבט-על ושליטה מלאה על כלל הפעילות של ברסוף</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      {/* Top Global KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KpiCard 
-          title="סה״כ פרויקטים" 
-          value={activeProjectsCount.toString()} 
+          title="סה״כ פרויקטים (כללי)" 
+          value={analytics.totalProjects.toString()} 
           icon={Briefcase} 
         />
         <KpiCard 
-          title="פרויקטים בתקינות" 
-          value={healthyProjects.toString()} 
+          title="פרויקטים פעילים" 
+          value={analytics.activeProjects.toString()} 
           icon={CheckCircle} 
+          trend="+2 החודש"
         />
         <KpiCard 
-          title="דורשים התערבות (חריגות)" 
-          value={projectsWithAlerts.toString()} 
-          icon={AlertTriangle} 
-          subtext={projectsWithAlerts > 0 ? "שים לב!" : ""}
+          title="תקציב מנוהל כולל" 
+          value={formatCurrency(analytics.totalBudget)} 
+          icon={Wallet} 
+        />
+        <KpiCard 
+          title="קריאות שנת בדק (פתוחות)" 
+          value={analytics.openWarrantyTickets.toString()} 
+          icon={ShieldCheck} 
+          subtext={analytics.openWarrantyTickets > 0 ? "דורש התייחסות" : "הכל מטופל"}
         />
       </div>
 
-      <div className="bg-surface rounded-xl shadow-sm border border-border overflow-hidden">
-        <div className="p-6 border-b border-border">
-          <h2 className="text-xl font-bold text-text-primary">סטטוס פרויקטים פעילים</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Chart */}
+        <div className="lg:col-span-2 bg-surface rounded-xl shadow-sm border border-border p-6">
+          <h2 className="text-lg font-bold text-text-primary mb-6">תקציב מול ביצוע (5 הפרויקטים הפעילים הגדולים)</h2>
+          <div className="h-72 w-full" dir="ltr">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={projectsData} margin={{ top: 10, right: 10, left: 20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
+                <XAxis dataKey="name" tick={{ fill: 'var(--color-text-secondary)' }} />
+                <YAxis tickFormatter={(val) => `₪${(val/1000).toFixed(0)}k`} tick={{ fill: 'var(--color-text-secondary)' }} />
+                <Tooltip 
+                  formatter={(value) => formatCurrency(value)}
+                  contentStyle={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '8px', color: 'var(--color-text-primary)' }}
+                />
+                <Legend />
+                <Bar dataKey="budget" name="תקציב מתוכנן" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expenses" name="הוצאות בפועל" fill="var(--color-brand)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="divide-y divide-border">
-          {projects.map(project => (
-            <div key={project.id} className="p-6 flex items-center justify-between hover:bg-surface-hover transition-colors">
-              <div>
-                <Link to={`/projects/${project.id}`} className="text-lg font-bold text-text-primary hover:text-[var(--color-brand)] transition-colors">
-                  {project.name}
-                </Link>
-                <p className="text-sm text-text-secondary mt-1">{project.location}</p>
+
+        {/* Quick Links / Alerts Panel */}
+        <div className="bg-surface rounded-xl shadow-sm border border-border p-6 flex flex-col">
+          <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-orange-500" />
+            פעולות לטיפול
+          </h2>
+          
+          <div className="flex-1 flex flex-col gap-3">
+            {analytics.openWarrantyTickets > 0 && (
+              <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                <p className="text-orange-700 dark:text-orange-400 font-medium text-sm">
+                  יש לך {analytics.openWarrantyTickets} קריאות "שנת בדק" פתוחות שממתינות לטיפול וליווי.
+                </p>
               </div>
-              <div className="flex items-center gap-4">
-                <span className={`text-xs font-medium px-3 py-1.5 rounded-full ${project.status === 'תקין' ? 'bg-[#10b981]/10 text-[#10b981]' : 'bg-red-500/10 text-red-600'}`}>
-                  {project.status}
-                </span>
-                <Link to={`/projects/${project.id}`} className="bg-background border border-border px-4 py-2 rounded-lg text-sm font-medium hover:bg-surface transition-colors">
-                  כניסה לפרויקט
-                </Link>
+            )}
+            
+            {(analytics.totalProjects - analytics.activeProjects) > 0 && (
+              <div className="p-4 bg-surface-hover border border-border rounded-lg">
+                <p className="text-text-primary font-medium text-sm">
+                  {analytics.totalProjects - analytics.activeProjects} פרויקטים ממתינים לאישור או שהושהה הסטטוס שלהם.
+                </p>
               </div>
-            </div>
-          ))}
-          {projects.length === 0 && (
-            <div className="p-8 text-center text-text-muted">אין פרויקטים פעילים במערכת.</div>
-          )}
+            )}
+          </div>
+          
+          <div className="mt-auto pt-4 border-t border-border">
+            <Link to="/" className="w-full py-2.5 bg-surface-hover hover:bg-border text-text-primary rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors">
+              מעבר לרשימת הפרויקטים
+              <ArrowUpRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
       </div>
     </div>

@@ -11,7 +11,9 @@ import {
   Calendar,
   FolderOpen,
   ArrowUpRight,
-  Settings
+  Settings,
+  ClipboardCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
@@ -23,11 +25,13 @@ const globalNavItems = [
 
 const getProjectNavItems = (projectId) => [
   { name: 'דאשבורד פרויקט', path: `/projects/${projectId}`, icon: LayoutDashboard },
+  { name: 'יומן עבודה יומי', path: `/projects/${projectId}/daily-logs`, icon: ClipboardCheck },
   { name: 'תקציב', path: `/projects/${projectId}/budget`, icon: Wallet },
   { name: 'הכנסות', path: `/projects/${projectId}/incomes`, icon: ReceiptText },
   { name: 'הוצאות', path: `/projects/${projectId}/expenses`, icon: ReceiptText },
   { name: 'קבלנים', path: `/projects/${projectId}/contractors`, icon: HardHat },
   { name: 'הזמנות רכש', path: `/projects/${projectId}/orders`, icon: ClipboardList },
+  { name: 'שנת בדק', path: `/projects/${projectId}/warranty`, icon: ShieldCheck },
   { name: 'לוח זמנים (Gantt)', path: `/projects/${projectId}/gantt`, icon: Calendar },
   { name: 'מסמכים וגלריה', path: `/projects/${projectId}/media`, icon: FolderOpen },
   { name: 'דוחות', path: `/projects/${projectId}/reports`, icon: BarChart3 },

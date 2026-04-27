@@ -104,6 +104,32 @@ function initDB() {
       date TEXT,
       FOREIGN KEY (project_id) REFERENCES projects(id)
     );
+
+    CREATE TABLE IF NOT EXISTS daily_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      manager_name TEXT,
+      weather TEXT,
+      workers_count INTEGER,
+      notes TEXT,
+      image_url TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    
+    CREATE TABLE IF NOT EXISTS warranty_tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      customer_name TEXT,
+      issue_description TEXT,
+      contractor_id INTEGER,
+      status TEXT DEFAULT 'פתוח',
+      open_date TEXT,
+      close_date TEXT,
+      notes TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (contractor_id) REFERENCES contractors(id)
+    );
   `);
   
   // Migration to add 'folder' column to existing project_media table

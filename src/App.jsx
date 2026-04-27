@@ -13,6 +13,8 @@ import { Overview } from './pages/Overview';
 import { ProjectGanttPage } from './pages/ProjectGanttPage';
 import { ProjectMediaPage } from './pages/ProjectMediaPage';
 import { ProjectIncomes } from './pages/ProjectIncomes';
+import { DailyLogs } from './pages/DailyLogs';
+import { Warranty } from './pages/Warranty';
 import { AIFloatingWidget } from './components/ui/AIFloatingWidget';
 
 function AppContent() {
@@ -33,6 +35,8 @@ function AppContent() {
             <Route path="/overview" element={<Overview />} />
             
             <Route path="/projects/:projectId" element={<Dashboard />} />
+            <Route path="/projects/:projectId/daily-logs" element={<DailyLogs />} />
+            <Route path="/projects/:projectId/warranty" element={<Warranty />} />
             <Route path="/projects/:projectId/gantt" element={<ProjectGanttPage />} />
             <Route path="/projects/:projectId/budget" element={<Budget />} />
             <Route path="/projects/:projectId/incomes" element={<ProjectIncomes />} />

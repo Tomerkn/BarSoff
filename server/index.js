@@ -199,6 +199,94 @@ app.delete('/api/incomes/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// Daily Logs API
+app.get('/api/daily-logs', (req, res) => {
+  const { projectId } = req.query;
+  let query = 'SELECT * FROM daily_logs';
+  let params = [];
+  if (projectId) {
+    query += ' WHERE project_id = ?';
+    params.push(projectId);
+  }
+  query += ' ORDER BY date DESC';
+  const logs = db.prepare(query).all(params);
+  res.json(logs);
+});
+
+app.post('/api/daily-logs', (req, res) => {
+  const { project_id, date, manager_name, weather, workers_count, notes, image_url } = req.body;
+  const insert = db.prepare('INSERT INTO daily_logs (project_id, date, manager_name, weather, workers_count, notes, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const result = insert.run(project_id, date, manager_name, weather, workers_count, notes, image_url);
+  res.status(201).json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/daily-logs/:id', (req, res) => {
+  const { date, manager_name, weather, workers_count, notes, image_url } = req.body;
+  const update = db.prepare('UPDATE daily_logs SET date = ?, manager_name = ?, weather = ?, workers_count = ?, notes = ?, image_url = ? WHERE id = ?');
+  update.run(date, manager_name, weather, workers_count, notes, image_url, req.params.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/daily-logs/:id', (req, res) => {
+  const stmt = db.prepare('DELETE FROM daily_logs WHERE id = ?');
+  stmt.run(req.params.id);
+  res.json({ success: true });
+});
+
+// Warranty Tickets API
+app.get('/api/warranty-tickets', (req, res) => {
+  const { projectId } = req.query;
+  let query = 'SELECT w.*, c.name as contractor_name FROM warranty_tickets w LEFT JOIN contractors c ON w.contractor_id = c.id';
+  let params = [];
+  if (projectId) {
+    query += ' WHERE w.project_id = ?';
+    params.push(projectId);
+  }
+  query += ' ORDER BY w.id DESC';
+  const tickets = db.prepare(query).all(params);
+  res.json(tickets);
+});
+
+app.post('/api/warranty-tickets', (req, res) => {
+  const { project_id, customer_name, issue_description, contractor_id, status, open_date, close_date, notes } = req.body;
+  const insert = db.prepare('INSERT INTO warranty_tickets (project_id, customer_name, issue_description, contractor_id, status, open_date, close_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const result = insert.run(project_id, customer_name, issue_description, contractor_id, status || 'פתוח', open_date, close_date, notes);
+  res.status(201).json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/warranty-tickets/:id', (req, res) => {
+  const { customer_name, issue_description, contractor_id, status, open_date, close_date, notes } = req.body;
+  const update = db.prepare('UPDATE warranty_tickets SET customer_name = ?, issue_description = ?, contractor_id = ?, status = ?, open_date = ?, close_date = ?, notes = ? WHERE id = ?');
+  update.run(customer_name, issue_description, contractor_id, status, open_date, close_date, notes, req.params.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/warranty-tickets/:id', (req, res) => {
+  const stmt = db.prepare('DELETE FROM warranty_tickets WHERE id = ?');
+  stmt.run(req.params.id);
+  res.json({ success: true });
+});
+
+// Global Analytics API
+app.get('/api/analytics/global', (req, res) => {
+  const totalBudgetRow = db.prepare('SELECT SUM(total_amount) as total FROM budgets').get();
+  const totalExpensesRow = db.prepare('SELECT SUM(amount) as total FROM expenses').get();
+  const totalIncomesRow = db.prepare('SELECT SUM(amount) as total FROM incomes').get();
+  
+  const openWarrantyRow = db.prepare("SELECT COUNT(*) as count FROM warranty_tickets WHERE status != 'סגור'").get();
+  const projectsRow = db.prepare("SELECT COUNT(*) as count FROM projects").get();
+  const activeProjectsRow = db.prepare("SELECT COUNT(*) as count FROM projects WHERE status = 'תקין'").get();
+
+  res.json({
+    totalBudget: totalBudgetRow.total || 0,
+    totalExpenses: totalExpensesRow.total || 0,
+    totalIncomes: totalIncomesRow.total || 0,
+    openWarrantyTickets: openWarrantyRow.count || 0,
+    totalProjects: projectsRow.count || 0,
+    activeProjects: activeProjectsRow.count || 0,
+  });
+});
+
 // Dashboard Analytics API
 app.get('/api/projects/:id/analytics', (req, res) => {
   const projectId = req.params.id;
