@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.5",
     "@langchain/community": "^1.1.27",
     "@langchain/core": "^1.1.41",
     "@langchain/ollama": "^1.2.6",
@@ -27,6 +28,7 @@
     "lucide-react": "^1.11.0",
     "multer": "^2.1.1",
     "pdf-parse": "^1.1.1",
+    "pdf2pic": "^3.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-draggable": "^4.5.0",

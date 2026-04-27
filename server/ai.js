@@ -8,6 +8,11 @@ import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
+import vision from '@google-cloud/vision';
+import { fromPath } from 'pdf2pic';
+
+// Initialize Google Cloud Vision Client
+const visionClient = new vision.ImageAnnotatorClient();
 
 const VECTOR_STORE_DIR = path.join(process.cwd(), 'server', 'data', 'vectorstores');
 
@@ -43,11 +48,26 @@ export const ingestDocument = async (projectId, filePath) => {
       chunkSize: 1000,
       chunkOverlap: 200,
     });
-    const docs = await textSplitter.splitDocuments(rawDocs);
+    
+    let docs = await textSplitter.splitDocuments(rawDocs);
 
-    // בדיקה אם המסמך ריק או שאין בו טקסט קריא
+    // בדיקה אם המסמך ריק או שאין בו טקסט קריא (מסמך סרוק, שרטוט וכו')
+    // אם כן - נפעיל את ה-OCR של Google Vision כדי לחלץ את הטקסט!
     if (!docs || docs.length === 0) {
-      throw new Error("לא נמצא טקסט קריא במסמך. ייתכן שזהו מסמך סרוק (תמונה) או קובץ ריק.");
+      console.log(`No native text found in ${filePath}, starting Google Cloud Vision OCR...`);
+      const ocrText = await performOCR(filePath);
+      
+      if (!ocrText || ocrText.trim() === '') {
+        throw new Error("לא נמצא טקסט קריא במסמך גם לאחר סריקת OCR מתקדמת. ייתכן שהמסמך ריק לגמרי.");
+      }
+      
+      // יצירת מסמך LangChain חדש מהטקסט שחולץ ב-OCR
+      const ocrDoc = {
+        pageContent: ocrText,
+        metadata: { source: filePath, isOCR: true }
+      };
+      
+      docs = await textSplitter.splitDocuments([ocrDoc]);
     }
 
     // 3. Create or load vector store
@@ -118,3 +138,51 @@ export const askQuestion = async (projectId, question) => {
     throw error;
   }
 };
+
+/**
+ * מפעיל סריקת תמונה (OCR) על קובץ PDF
+ * ממיר את ה-PDF לתמונות ושולח ל-Google Cloud Vision API
+ */
+async function performOCR(filePath) {
+  let fullText = '';
+  
+  try {
+    // הגדרות להמרת PDF לתמונות
+    const options = {
+      density: 300,           // איכות גבוהה לשרטוטים
+      saveFilename: "ocr_page",
+      savePath: "/tmp",
+      format: "png",
+      width: 2550,            // רוחב מתאים לשרטוטים ואותיות קטנות
+      height: 3300
+    };
+    
+    const convert = fromPath(filePath, options);
+    
+    // המרת כל הדפים (-1) במכה אחת וקבלת התמונות בתור באפר
+    const pages = await convert.bulk(-1, { responseType: "buffer" });
+    
+    console.log(`PDF converted to ${pages.length} images for OCR.`);
+
+    // סריקת כל דף דרך Vision API
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      if (!page || !page.buffer) continue;
+      
+      console.log(`Processing page ${i + 1} with Google Vision API...`);
+      const [result] = await visionClient.documentTextDetection({
+        image: { content: page.buffer }
+      });
+      
+      if (result.fullTextAnnotation && result.fullTextAnnotation.text) {
+        fullText += `--- Page ${i + 1} ---\n`;
+        fullText += result.fullTextAnnotation.text + "\n\n";
+      }
+    }
+    
+    return fullText;
+  } catch (error) {
+    console.error('OCR Error:', error);
+    throw new Error('שגיאה בתהליך ה-OCR: ' + error.message);
+  }
+}
