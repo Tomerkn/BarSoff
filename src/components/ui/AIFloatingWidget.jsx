@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Draggable from 'react-draggable';
 import { Bot, X, Sparkles } from 'lucide-react';
 import { ProjectChat } from './ProjectChat';
@@ -6,19 +6,33 @@ import { ProjectChat } from './ProjectChat';
 export function AIFloatingWidget({ projectId }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const nodeRef = React.useRef(null);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   if (!projectId || !isVisible) return null;
 
   return (
-    <Draggable nodeRef={nodeRef} handle=".drag-handle" bounds="body">
-      <div ref={nodeRef} className="fixed bottom-6 left-6 z-50 flex flex-col items-start">
+    <Draggable nodeRef={nodeRef} handle=".drag-handle" bounds="body" disabled={isMobile}>
+      <div 
+        ref={nodeRef} 
+        className={`fixed z-50 flex flex-col items-start ${isMobile && isOpen ? 'inset-0 p-4' : 'bottom-6 left-6'}`}
+      >
         
         {/* Chat Window */}
         {isOpen && (
           <div 
-            className="bg-surface border border-border rounded-2xl shadow-2xl mb-4 overflow-hidden flex flex-col transition-all duration-300"
-            style={{ width: '400px', maxWidth: '90vw', height: '550px', maxHeight: '85vh' }}
+            className={`bg-surface border border-border overflow-hidden flex flex-col transition-all duration-300 shadow-2xl ${
+              isMobile 
+                ? 'w-full h-full rounded-2xl' 
+                : 'w-[400px] h-[550px] max-w-[90vw] max-h-[85vh] rounded-2xl mb-4'
+            }`}
           >
             <div className="drag-handle bg-[var(--color-brand)] p-3 flex justify-between items-center cursor-move text-white rounded-t-2xl shrink-0">
               <div className="flex items-center gap-2">
