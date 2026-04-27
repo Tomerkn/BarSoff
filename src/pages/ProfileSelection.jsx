@@ -41,11 +41,11 @@ export function ProfileSelection({ onSelect }) {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden" dir="rtl">
       {/* Background Infographic */}
       <div 
-        className="absolute inset-0 opacity-10 pointer-events-none grayscale hover:grayscale-0 transition-all duration-1000"
+        className="absolute inset-0 opacity-[0.08] pointer-events-none transition-opacity duration-1000"
         style={{ 
-          backgroundImage: 'url(/construction_bg.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
+          backgroundImage: 'url(/doodle_bg.png)',
+          backgroundSize: '400px',
+          backgroundRepeat: 'repeat'
         }}
       />
       
