@@ -31,7 +31,7 @@ const profiles = [
     name: 'מנהלת חשבונות',
     role: 'כספים',
     icon: <Calculator className="w-8 h-8 text-brand" />,
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Accountant&backgroundColor=ffd5dc',
+    avatar: '/accountant.png',
     bg: 'bg-rose-50'
   }
 ];
@@ -55,8 +55,8 @@ export function ProfileSelection({ onSelect }) {
           alt="Barsuf Logo" 
           className="h-16 mx-auto mb-6"
         />
-        <h1 className="text-3xl font-bold text-text-primary mb-2">ברוכים הבאים למערכת Barsuf</h1>
-        <p className="text-text-secondary text-lg">בחר פרופיל עבודה כדי להמשיך</p>
+        <h1 className="text-3xl font-bold text-text-primary mb-2">ברוכים הבאים למערכת ניהול פרויקטים של חברת ברסוף !</h1>
+        <p className="text-text-secondary text-lg font-medium">בחר פרופיל עבודה כדי להמשיך</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl w-full">
@@ -89,7 +89,7 @@ export function ProfileSelection({ onSelect }) {
 
       <div className="mt-16 text-text-muted text-sm flex items-center gap-2 relative z-10 bg-surface/80 backdrop-blur-sm px-4 py-2 rounded-full border border-border">
         <User className="w-4 h-4" />
-        <span>מערכת ניהול פרויקטים חכמה | Barsuf 2024</span>
+        <span>מערכת ניהול פרויקטים חכמה | Barsuf 2026</span>
       </div>
     </div>
   );
