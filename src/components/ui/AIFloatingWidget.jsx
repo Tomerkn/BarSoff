@@ -42,7 +42,7 @@ export function AIFloatingWidget({ projectId }) {
 
         {/* Floating Button */}
         {!isOpen && (
-          <div className="drag-handle cursor-move relative group flex items-start gap-1">
+          <div className="relative group flex items-start gap-1">
             <button 
               onClick={() => setIsOpen(true)}
               className="bg-[var(--color-brand)] hover:bg-[#46a2aa] text-white w-16 h-16 rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105 relative z-10"
