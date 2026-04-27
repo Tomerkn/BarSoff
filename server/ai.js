@@ -51,10 +51,13 @@ export const ingestDocument = async (projectId, filePath) => {
     
     let docs = await textSplitter.splitDocuments(rawDocs);
 
-    // בדיקה אם המסמך ריק או שאין בו טקסט קריא (מסמך סרוק, שרטוט וכו')
-    // אם כן - נפעיל את ה-OCR של Google Vision כדי לחלץ את הטקסט!
-    if (!docs || docs.length === 0) {
-      console.log(`No native text found in ${filePath}, starting Google Cloud Vision OCR...`);
+    // חקירת כמות הטקסט הטבעי שחולץ מהמסמך
+    const totalChars = docs.reduce((acc, doc) => acc + (doc.pageContent ? doc.pageContent.length : 0), 0);
+    
+    // בדיקה אם המסמך ריק או שאין בו מספיק טקסט קריא (מסמך סרוק, שרטוט, או חשבונית עם מעט טקסט)
+    // קריאת PDF רגילה נוטה להרוס טבלאות ושורות תחתונות. ה-OCR של גוגל הרבה יותר חכם.
+    if (!docs || docs.length === 0 || totalChars < 3000) {
+      console.log(`Native text extraction yielded ${totalChars} chars. Triggering Google Cloud Vision OCR for better accuracy...`);
       const ocrText = await performOCR(filePath);
       
       if (!ocrText || ocrText.trim() === '') {
