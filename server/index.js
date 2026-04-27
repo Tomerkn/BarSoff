@@ -179,7 +179,9 @@ app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => {
     if (error.cause && error.cause.code === 'ECONNREFUSED') {
       return res.status(503).json({ error: 'Ollama is not running. Please start the Ollama application.' });
     }
-    res.status(500).json({ error: 'Failed to process file. Make sure Ollama is running and model llama3 is installed.' });
+    // החזר את הודעת השגיאה הספציפית אם יש כזו (כמו במקרה של קובץ סרוק), אחרת הודעה כללית
+    const errorMessage = error.message || 'Failed to process file. Make sure Ollama is running and model llama3 is installed.';
+    res.status(500).json({ error: errorMessage });
   }
 });
 

@@ -3,8 +3,9 @@ import { api } from '../../services/api';
 import { Bot, Send, Upload, FileText, Loader2, Paperclip, X } from 'lucide-react';
 
 export function ProjectChat({ projectId }) {
+  // כאן אנחנו מגדירים את ברבור, עוזר ה-AI של המערכת 🦢
   const [messages, setMessages] = useState([
-    { id: 1, type: 'bot', text: 'היי! אני עוזר ה-AI של הפרויקט. העלה מסמכים (כמו מפרטים וכתבי כמויות) ותוכל לשאול אותי שאלות עליהם.' }
+    { id: 1, type: 'bot', text: 'אהלן! אני ברבור 🦢, עוזר הבינה המלאכותית של הפרויקט. תזרוק לי פה איזה מסמך או תוכנית בנייה, ותרגיש חופשי לשאול אותי עליהם שאלות!' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -106,8 +107,8 @@ export function ProjectChat({ projectId }) {
             <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-text-primary">Barsoff AI</h3>
-            <p className="text-xs text-text-secondary">חיפוש חכם במסמכי הפרויקט</p>
+            <h3 className="font-bold text-text-primary">ברבור 🦢 (Barbur)</h3>
+            <p className="text-xs text-text-secondary">עוזר הבינה המלאכותית שלך</p>
           </div>
         </div>
         
@@ -154,7 +155,7 @@ export function ProjectChat({ projectId }) {
               {msg.type === 'bot' && (
                 <div className="flex items-center gap-2 mb-1 text-[var(--color-brand)]">
                   <Bot className="w-3.5 h-3.5" />
-                  <span className="text-xs font-bold">AI Assistant</span>
+                  <span className="text-xs font-bold">ברבור 🦢</span>
                 </div>
               )}
               <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.text}</p>
