@@ -60,12 +60,12 @@ export function AIExcelUpload({ projectId, targetTable, onSuccess }) {
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
         className={cn(
-          "bg-surface hover:bg-surface-hover border border-[var(--color-brand)] text-[var(--color-brand)]",
+          "bg-surface hover:bg-surface-hover border border-border text-text-secondary hover:text-text-primary",
           "px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
         )}
       >
-        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-        {isUploading ? 'מפענח עם AI...' : 'ייבא מאקסל 🪄'}
+        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+        {isUploading ? 'טוען נתונים...' : 'ייבא מאקסל'}
       </button>
 
       {successMsg && (
