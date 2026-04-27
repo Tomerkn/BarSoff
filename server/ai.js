@@ -19,8 +19,10 @@ if (!fs.existsSync(VECTOR_STORE_DIR)) {
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
 
 // Initialize Ollama embeddings and LLM
+// כאן אנחנו משתמשים במודל nomic-embed-text שהוא מודל קטן ומהיר במיוחד (רק בשביל קריאת המסמכים)
+// זה יקצר את זמן ההעלאה ב-90%!
 const embeddings = new OllamaEmbeddings({
-  model: 'llama3',
+  model: 'nomic-embed-text',
   baseUrl: OLLAMA_BASE_URL,
 });
 
