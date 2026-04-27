@@ -106,11 +106,19 @@ export const askQuestion = async (projectId, question) => {
 
     // צירוף רשימת הקבצים שהמשתמש העלה לגלריית הפרויקט (ללא תוכן, רק שמות)
     try {
-      const mediaFiles = db.prepare('SELECT original_name, upload_date FROM project_media WHERE project_id = ?').all(projectId);
+      // Use try-catch for the query in case the folder column doesn't exist yet
+      let mediaFiles = [];
+      try {
+        mediaFiles = db.prepare('SELECT original_name, upload_date, folder FROM project_media WHERE project_id = ?').all(projectId);
+      } catch (e) {
+        mediaFiles = db.prepare('SELECT original_name, upload_date FROM project_media WHERE project_id = ?').all(projectId);
+      }
+
       if (mediaFiles.length > 0) {
         fileListText += "\nבנוסף, המשתמש שמר בגלריית הפרויקט את התמונות/מסמכים הבאים (אין לך גישה לתוכן שלהם, רק לשמם ולתאריך):\n";
         for (const media of mediaFiles) {
-          fileListText += `- ${media.original_name} (בתאריך: ${new Date(media.upload_date).toLocaleDateString('he-IL')})\n`;
+          const folderText = media.folder ? `תיקייה: ${media.folder}` : '';
+          fileListText += `- ${media.original_name} (${folderText} | בתאריך: ${new Date(media.upload_date).toLocaleDateString('he-IL')})\n`;
         }
       }
     } catch (e) {

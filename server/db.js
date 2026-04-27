@@ -30,6 +30,7 @@ function initDB() {
       original_name TEXT NOT NULL,
       url TEXT NOT NULL,
       mime_type TEXT,
+      folder TEXT DEFAULT 'כללי',
       upload_date TEXT,
       FOREIGN KEY (project_id) REFERENCES projects(id)
     );
@@ -84,6 +85,13 @@ function initDB() {
       FOREIGN KEY (project_id) REFERENCES projects(id)
     );
   `);
+  
+  // Migration to add 'folder' column to existing project_media table
+  try {
+    db.exec("ALTER TABLE project_media ADD COLUMN folder TEXT DEFAULT 'כללי'");
+  } catch (err) {
+    // Column already exists, ignore
+  }
   
   console.log('Database initialized.');
 }

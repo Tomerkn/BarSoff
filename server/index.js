@@ -201,6 +201,7 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
   const originalName = req.file.originalname;
   const filePath = req.file.path;
   const mimeType = req.file.mimetype;
+  const folder = req.body.folder || 'כללי';
   
   // To avoid special characters in GCS URL, encode filename safely or use a simple timestamp
   const safeFilename = encodeURIComponent(originalName.replace(/\s+/g, '-'));
@@ -220,8 +221,8 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
     const publicUrl = `https://storage.googleapis.com/${BUCKET_NAME}/${destination}`;
     
     // Save to DB
-    const insert = db.prepare('INSERT INTO project_media (project_id, filename, original_name, url, mime_type, upload_date) VALUES (?, ?, ?, ?, ?, ?)');
-    insert.run(projectId, req.file.filename, originalName, publicUrl, mimeType, new Date().toISOString());
+    const insert = db.prepare('INSERT INTO project_media (project_id, filename, original_name, url, mime_type, folder, upload_date) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    insert.run(projectId, req.file.filename, originalName, publicUrl, mimeType, folder, new Date().toISOString());
     
     // Clean up local file since it's uploaded to cloud
     if (fs.existsSync(filePath)) {
