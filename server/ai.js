@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/server';
+import db from './db.js';
 
 const CACHE_DIR = path.join(process.cwd(), 'server', 'data', 'gemini_cache');
 
@@ -87,8 +88,14 @@ export const askQuestion = async (projectId, question) => {
       { text: "אתה עוזר בינה מלאכותית למנהל פרויקטים בבנייה ששמו 'ברבור 🦢'. המשתמש יצרף מסמכים (כמו תוכניות חשמל, קבלות, חשבוניות וכו'). עליך לענות לו באופן מדויק על השאלה על סמך המסמכים המצורפים. הקפד לקרוא היטב טבלאות ושרטוטים. ענה בעברית בלבד ובטון חברי ועוזר. חשוב מאוד: אל תשתמש בעיצוב Markdown (כמו כוכביות להדגשה) ואל תשתמש בסימונים מתמטיים באנגלית או ב-LaTeX (כמו $ או \\pi). כתוב את כל המספרים והחישובים כטקסט פשוט וברור בעברית כדי למנוע שיבושי קריאה (לדוגמה: 'פיי כפול 0.2'). אם אינך מוצא את התשובה במסמכים, אמור פשוט שאין לך מידע כזה שם. הנה השאלה:\n\n" + question }
     ];
 
+    let fileListText = "רשימת המסמכים המצורפים כרגע לפרויקט (שאתה קורא כרגע מתוכם):\n";
+
     // הוספת כל המסמכים של הפרויקט להקשר של המודל
     for (const file of files) {
+      // Find original name from db by searching the filename or just use the local file name if available
+      const originalName = file.localPath ? path.basename(file.localPath).split('-').slice(1).join('-') : file.name;
+      fileListText += `- ${originalName || 'מסמך ללא שם'} (הועלה בתאריך: ${new Date(file.uploadTime).toLocaleDateString('he-IL')})\n`;
+      
       promptParts.unshift({
         fileData: {
           mimeType: file.mimeType,
@@ -96,6 +103,22 @@ export const askQuestion = async (projectId, question) => {
         }
       });
     }
+
+    // צירוף רשימת הקבצים שהמשתמש העלה לגלריית הפרויקט (ללא תוכן, רק שמות)
+    try {
+      const mediaFiles = db.prepare('SELECT original_name, upload_date FROM project_media WHERE project_id = ?').all(projectId);
+      if (mediaFiles.length > 0) {
+        fileListText += "\nבנוסף, המשתמש שמר בגלריית הפרויקט את התמונות/מסמכים הבאים (אין לך גישה לתוכן שלהם, רק לשמם ולתאריך):\n";
+        for (const media of mediaFiles) {
+          fileListText += `- ${media.original_name} (בתאריך: ${new Date(media.upload_date).toLocaleDateString('he-IL')})\n`;
+        }
+      }
+    } catch (e) {
+      console.error("Could not fetch project media for prompt", e);
+    }
+
+    // הוספת טקסט הרשימה להנחיה המרכזית
+    promptParts.push({ text: `\n\n${fileListText}\n\nאם המשתמש שואל אילו קבצים/מסמכים יש לפרויקט, תסכם לו את הרשימה הנ"ל בצורה יפה.` });
 
     console.log(`Asking Gemini question across ${files.length} documents...`);
     const result = await model.generateContent(promptParts);
