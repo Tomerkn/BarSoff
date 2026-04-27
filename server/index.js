@@ -289,6 +289,88 @@ app.put('/api/tasks/:id', (req, res) => {
   }
 });
 
+app.post('/api/projects/:id/sync-monday', async (req, res) => {
+  const { token, boardId } = req.body;
+  if (!token || !boardId) return res.status(400).json({ error: 'Missing Monday credentials' });
+  
+  try {
+    const query = `query { boards (ids: [${boardId}]) { items_page (limit: 100) { items { id name column_values { id text } } } } }`;
+    const response = await fetch('https://api.monday.com/v2', {
+      method: 'post',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token
+      },
+      body: JSON.stringify({ query })
+    });
+    
+    if (!response.ok) throw new Error('Monday API request failed');
+    const data = await response.json();
+    
+    if (data.errors) throw new Error(data.errors[0].message);
+    if (!data.data.boards || data.data.boards.length === 0) throw new Error('Board not found');
+    
+    const items = data.data.boards[0].items_page.items;
+    
+    // Clear existing tasks for this project
+    db.prepare('DELETE FROM tasks WHERE project_id = ?').run(req.params.id);
+    const insert = db.prepare('INSERT INTO tasks (project_id, name, start_date, end_date, progress, status) VALUES (?, ?, ?, ?, ?, ?)');
+    
+    // Process items
+    const today = new Date();
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      let startDateStr = '';
+      let endDateStr = '';
+      let progress = 0;
+      let status = 'pending';
+      
+      // Look for date or timeline columns in monday
+      for (const col of item.column_values) {
+        if (col.id.includes('date') || col.id.includes('timeline')) {
+           if (col.text && col.text.includes(' - ')) {
+              const parts = col.text.split(' - ');
+              startDateStr = parts[0];
+              endDateStr = parts[1];
+           } else if (col.text && col.text.length > 5) {
+              startDateStr = col.text;
+              endDateStr = col.text;
+           }
+        }
+        if (col.id.includes('status')) {
+           status = col.text || 'pending';
+           if (status.toLowerCase().includes('done')) progress = 100;
+           if (status.toLowerCase().includes('working')) progress = 50;
+        }
+        if (col.id.includes('progress') && col.text) {
+           progress = parseInt(col.text) || progress;
+        }
+      }
+      
+      // Default dates if not found (stagger them to make a nice gantt)
+      if (!startDateStr) {
+         const s = new Date(today);
+         s.setDate(s.getDate() + (i * 3)); // Stagger by 3 days
+         startDateStr = s.toISOString().split('T')[0];
+         
+         const e = new Date(s);
+         e.setDate(e.getDate() + 7); // 1 week duration
+         endDateStr = e.toISOString().split('T')[0];
+      } else if (!endDateStr) {
+         endDateStr = startDateStr;
+      }
+      
+      insert.run(req.params.id, item.name, startDateStr, endDateStr, progress, status);
+    }
+    
+    res.json({ success: true, count: items.length });
+  } catch (error) {
+    console.error('Monday sync error:', error);
+    res.status(500).json({ error: error.message || 'Failed to sync with Monday' });
+  }
+});
+
 // Serve frontend static files in production
 const DIST_DIR = path.join(process.cwd(), 'dist');
 if (fs.existsSync(DIST_DIR)) {

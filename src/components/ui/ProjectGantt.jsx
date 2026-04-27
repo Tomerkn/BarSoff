@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Clock, CheckCircle2, PlayCircle, Loader2 } from 'lucide-react';
+import { Calendar, Plus, Clock, CheckCircle2, PlayCircle, Loader2, RefreshCw } from 'lucide-react';
 
 export function ProjectGantt({ projectId }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newTask, setNewTask] = useState({ name: '', start_date: '', end_date: '', progress: 0 });
+  
+  // Monday Sync State
+  const [showMondayModal, setShowMondayModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [mondayToken, setMondayToken] = useState('eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjYwMTI4NjQwMywiYWFpIjoxMSwidWlkIjo5NzcwMTk5NCwiaWFkIjoiMjAyNS0xMi0yN1QxNTo0NjowNC4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MzI1NDUwMjYsInJnbiI6ImV1YzEifQ.DEQcRaY0dumwEXLVoyEimnfgaLtiFbe0q6g40Okc0KI');
+  const [mondayBoardId, setMondayBoardId] = useState('5089388529');
 
   const fetchTasks = async () => {
     if (!projectId) return;
@@ -54,6 +60,31 @@ export function ProjectGantt({ projectId }) {
       fetchTasks();
     } catch (error) {
       console.error('Error updating task', error);
+    }
+  };
+
+  const handleMondaySync = async (e) => {
+    e.preventDefault();
+    if (!mondayToken || !mondayBoardId) return;
+    
+    setIsSyncing(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sync-monday`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: mondayToken, boardId: mondayBoardId })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to sync');
+      }
+      setShowMondayModal(false);
+      fetchTasks();
+    } catch (error) {
+      alert('שגיאה בסנכרון מול מאנדיי: ' + error.message);
+      console.error('Monday sync error', error);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -108,13 +139,22 @@ export function ProjectGantt({ projectId }) {
           <p className="text-sm text-text-secondary">תכנון ומעקב אחר שלבי הבניה</p>
         </div>
         
-        <button 
-          onClick={() => setIsAdding(!isAdding)}
-          className="bg-[var(--color-brand)] hover:bg-[#46a2aa] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          משימה חדשה
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowMondayModal(true)}
+            className="bg-[#6161ff] hover:bg-[#4d4dcc] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            סנכרן מ-Monday
+          </button>
+          <button 
+            onClick={() => setIsAdding(!isAdding)}
+            className="bg-[var(--color-brand)] hover:bg-[#46a2aa] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            משימה חדשה
+          </button>
+        </div>
       </div>
 
       {isAdding && (
@@ -154,6 +194,62 @@ export function ProjectGantt({ projectId }) {
             שמור
           </button>
         </form>
+      )}
+
+      {showMondayModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-xl font-bold text-text-primary mb-4 flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-[#6161ff]" />
+              סנכרון מול Monday.com
+            </h3>
+            <p className="text-sm text-text-secondary mb-6">
+              הזן את פרטי ההתחברות שלך כדי למשוך את המשימות מלוח ה-Monday שלך ישירות לכאן. שים לב: זה יחליף את המשימות הקיימות בפרויקט זה.
+            </p>
+            
+            <form onSubmit={handleMondaySync} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">API Token</label>
+                <input 
+                  type="password" 
+                  required
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-[#6161ff]"
+                  value={mondayToken}
+                  onChange={e => setMondayToken(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">Board ID (מזהה לוח)</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="למשל: 5089388529"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-[#6161ff]"
+                  value={mondayBoardId}
+                  onChange={e => setMondayBoardId(e.target.value)}
+                />
+              </div>
+              
+              <div className="flex gap-3 justify-end mt-6">
+                <button 
+                  type="button" 
+                  onClick={() => setShowMondayModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  ביטול
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSyncing}
+                  className="bg-[#6161ff] hover:bg-[#4d4dcc] text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  סנכרן עכשיו
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {tasks.length === 0 ? (
