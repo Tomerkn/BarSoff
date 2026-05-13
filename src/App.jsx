@@ -20,8 +20,14 @@ import { ProfileSelection } from './pages/ProfileSelection'; // מביאים א�
 
 function AppContent() { // הפונקציה הראשית שמחליטה מה להראות באתר
   const [selectedProfile, setSelectedProfile] = useState(() => { // בודקים אם יש משתמש שכבר נבחר קודם
-    const saved = localStorage.getItem('barsuf_profile'); // מנסים למשוך את המידע מהזיכרון של הדפדפן
-    return saved ? JSON.parse(saved) : null; // אם מצאנו - משתמשים בו, אם לא - מתחילים ריק
+    try {
+      const saved = localStorage.getItem('barsuf_profile'); // מנסים למשוך את המידע מהזיכרון של הדפדפן
+      return saved ? JSON.parse(saved) : null; // אם מצאנו - משתמשים בו, אם לא - מתחילים ריק
+    } catch (e) {
+      console.error('Error loading profile from localStorage:', e);
+      localStorage.removeItem('barsuf_profile'); // מנקים מידע פגום
+      return null;
+    }
   });
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // משתנה שבודק אם התפריט של הטלפון פתוח
