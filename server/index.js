@@ -48,7 +48,12 @@ app.use(express.json()); // מאפשרים לשרת לקרוא מידע בפור
 
 // --- בדיקת תקינות (Health Check) ---
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Barsuf Backend is running on port 3001' });
+  res.json({ 
+    status: 'ok', 
+    message: 'Barsuf Backend is running',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // --- פרויקטים ---
@@ -669,6 +674,14 @@ if (fs.existsSync(DIST_DIR)) {
   });
 }
 
-app.listen(PORT, () => { // הפעלת השרת
-  console.log(`Server is running on http://localhost:${PORT}`);
+const server = app.listen(PORT, () => { // הפעלת השרת
+  console.log(`Server is running on port ${PORT}`);
+});
+
+// טיפול בסגירה מסודרת (Graceful Shutdown) - חשוב לענן
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
 });

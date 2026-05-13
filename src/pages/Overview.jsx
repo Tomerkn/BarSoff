@@ -62,9 +62,15 @@ export function Overview() { // דף מבט-על ארגוני של כל החבר
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
       {/* כותרת הדף */}
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">דאשבורד מנהל ארגוני</h1>
-        <p className="text-text-secondary text-sm">מבט-על ושליטה מלאה על כלל הפעילות של ברסוף</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">דאשבורד מנהל ארגוני</h1>
+          <p className="text-text-secondary text-sm">מבט-על ושליטה מלאה על כלל הפעילות של ברסוף</p>
+        </div>
+        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
+          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold uppercase tracking-wider">Cloud Sync Active</span>
+        </div>
       </div>
 
       {/* כרטיסי מידע כלליים על כל החברה */}
