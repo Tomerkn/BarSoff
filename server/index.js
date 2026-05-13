@@ -35,6 +35,11 @@ const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'barsuf-media-storage-1777314
 app.use(cors()); // מפעילים קורס
 app.use(express.json()); // מאפשרים לשרת לקרוא מידע בפורמט JSON
 
+// --- בדיקת תקינות (Health Check) ---
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Barsuf Backend is running on port 3001' });
+});
+
 // --- פרויקטים ---
 app.get('/api/projects', (req, res) => { // קבלת כל הפרויקטים
   const projects = db.prepare('SELECT * FROM projects').all(); // מושכים מהדאטהבייס

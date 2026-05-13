@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:3001/api'; // קובעים אם אנחנו עובדים מול השרת באינטרנט או במחשב המקומי
+const API_BASE_URL = '/api'; // משתמשים בנתיב יחסי, ה-Vite Proxy יפנה את זה לפורט 3001 בפיתוח
 
 export const api = { // יצירת השליח שמדבר עם השרת
   baseUrl: API_BASE_URL, // הכתובת הבסיסית של השרת
