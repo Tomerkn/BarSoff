@@ -3,9 +3,15 @@ const API_BASE_URL = '/api'; // משתמשים בנתיב יחסי, ה-Vite Prox
 export const api = { // יצירת השליח שמדבר עם השרת
   baseUrl: API_BASE_URL, // הכתובת הבסיסית של השרת
   getProjects: async () => { // בקשה לקבלת כל הפרויקטים
-    const response = await fetch(`${API_BASE_URL}/projects`); // מבקשים מהשרת את הרשימה
-    if (!response.ok) throw new Error('Failed to fetch projects'); // אם יש תקלה, מודיעים למערכת
-    return response.json(); // מחזירים את התוצאה כמידע מסודר
+    try {
+      const response = await fetch(`${API_BASE_URL}/projects`); // מבקשים מהשרת את הרשימה
+      if (!response.ok) return []; // אם יש תקלה, מחזירים מערך ריק כדי שלא יקרוס
+      const data = await response.json();
+      return Array.isArray(data) ? data : []; // מוודאים שזה באמת מערך
+    } catch (error) {
+      console.error('Fetch projects failed:', error);
+      return []; // במקרה של שגיאת רשת, מחזירים מערך ריק
+    }
   },
   createProject: async (data) => { // בקשה ליצירת פרויקט חדש
     const response = await fetch(`${API_BASE_URL}/projects`, { // שולחים את פרטי הפרויקט לשרת
