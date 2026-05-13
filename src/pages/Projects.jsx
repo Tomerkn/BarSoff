@@ -12,12 +12,19 @@ export function Projects() { // דף ניהול הפרויקטים הראשי
   const [submitting, setSubmitting] = useState(false); // האם אנחנו באמצע שמירת נתונים
   const [editingId, setEditingId] = useState(null); // אם אנחנו עורכים פרויקט קיים, כאן נשמר המספר שלו
 
+  const [error, setError] = useState(null); // שמירת הודעת שגיאה
+
   const fetchProjects = async () => { // פונקציה שמביאה את כל הפרויקטים מהשרת
     try {
+      console.log('Fetching projects from:', api.baseUrl);
+      setLoading(true);
       const data = await api.getProjects(); // מבקשים את הרשימה
+      console.log('Projects received:', data);
       setProjects(data); // מעדכנים את הדף עם הרשימה החדשה
+      setError(null);
     } catch (error) {
-      console.error(error); // אם הייתה שגיאה, רושמים אותה
+      console.error('Failed to load projects:', error); // אם הייתה שגיאה, רושמים אותה
+      setError('לא הצלחנו לטעון את הפרויקטים. וודאו שהשרת (Backend) רץ.');
     } finally {
       setLoading(false); // בכל מקרה מפסיקים להראות את סמל הטעינה
     }
@@ -93,6 +100,12 @@ export function Projects() { // דף ניהול הפרויקטים הראשי
           פרויקט חדש
         </button>
       </div>
+
+      {error && (
+        <div className="mb-8 p-4 bg-red-500/10 border border-red-500/20 text-red-600 rounded-xl text-center font-medium">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> {/* רשת הפרויקטים */}
         {Array.isArray(projects) && projects.map(project => (
