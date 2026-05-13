@@ -41,19 +41,29 @@ export function Dashboard() { // דף הלוח בקרה (דשבורד) של הפ
     );
   }
 
-  if (!data) return <div className="p-8 text-center text-red-500 font-bold">שגיאה בטעינת נתונים או פרויקט לא נמצא.</div>;
-
-  const { project, totalBudget, actualExecution, totalIncomes, profitLoss, variance, utilization, breakdown } = data; // מפרקים את המידע שקיבלנו מהשרת
+  if (!data || !data.project) return <div className="p-8 text-center text-red-500 font-bold">שגיאה בטעינת נתונים או פרויקט לא נמצא.</div>;
+  
+  // הגדרת ערכי ברירת מחדל כדי למנוע קריסה
+  const { 
+    project, 
+    totalBudget = 0, 
+    actualExecution = 0, 
+    totalIncomes = 0, 
+    profitLoss = 0, 
+    variance = 0, 
+    utilization = 0, 
+    breakdown = [] 
+  } = data;
 
   const isOverspent = variance > 0; // בודקים אם חרגנו מהתקציב
   const statusColor = isOverspent ? 'bg-red-500' : 'bg-[#10b981]'; // צבע הסטטוס (אדום לחריגה, ירוק לתקין)
   const statusText = isOverspent ? 'חריגה תקציבית' : 'תקין';
 
-  const chartData = breakdown.map(item => ({ // מכינים את הנתונים לגרף העמודות
-    name: item.category, // שם הסעיף (למשל: חשמל)
-    תקציב: item.budget, // הסכום המתוכנן
+  const chartData = Array.isArray(breakdown) ? breakdown.map(item => ({ // מכינים את הנתונים לגרף העמודות
+    name: item.category || 'כללי', // שם הסעיף (למשל: חשמל)
+    תקציב: item.budget || 0, // הסכום המתוכנן
     ביצוע: item.actual || 0 // הסכום ששולם בפועל
-  }));
+  })) : [];
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
