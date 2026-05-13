@@ -28,8 +28,19 @@ const storage = multer.diskStorage({ // קובעים איפה ואיך לשמו�
 });
 const upload = multer({ storage }); // מפעילים את המנגנון
 
-// חיבור לאחסון של גוגל
-const storageClient = new Storage(); // יוצרים לקוח ענן
+// חיבור לאחסון של גוגל (אותחול מושהה כדי למנוע קריסה ללא מפתחות)
+let storageClient = null;
+const getStorageClient = () => {
+  if (!storageClient) {
+    try {
+      storageClient = new Storage();
+    } catch (err) {
+      console.error('Failed to initialize Google Cloud Storage:', err);
+      return null;
+    }
+  }
+  return storageClient;
+};
 const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'barsuf-media-storage-1777314059'; // שם הדלי בענן
 
 app.use(cors()); // מפעילים קורס
@@ -381,7 +392,11 @@ app.post('/api/projects/:id/media', upload.single('file'), async (req, res) => {
   const destination = `projects/${projectId}/${Date.now()}-${safeFilename}`;
   
   try {
-    await storageClient.bucket(BUCKET_NAME).upload(filePath, { // מעלים לענן של גוגל
+    const client = getStorageClient();
+    if (!client) {
+      throw new Error('Google Cloud Storage client not initialized');
+    }
+    await client.bucket(BUCKET_NAME).upload(filePath, { // מעלים לענן של גוגל
       destination: destination,
       metadata: {
         contentType: mimeType,
