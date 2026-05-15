@@ -1,82 +1,82 @@
-import fs from 'fs'; // כלי לעבודה עם קבצים
-import path from 'path'; // כלי לטיפול בנתיבי קבצים
-import { GoogleGenerativeAI } from '@google/generative-ai'; // התחברות לבינה המלאכותית של גוגל
-import { GoogleAIFileManager } from '@google/generative-ai/server'; // ניהול קבצים מול גוגל
-import Anthropic from '@anthropic-ai/sdk'; // התחברות ל-Claude (אנתרופיק) כגיבוי
-import db from './db.js'; // חיבור למסד הנתונים
-import pdf from 'pdf-parse'; // קריאת טקסט מ-PDF
-import { VectorStorage } from 'vector-storage'; // מסד נתונים וקטורי מקומי
+import fs from 'fs'; // כלי בסיסי שמאפשר לקרוא ולכתוב קבצים על המחשב (כמו ה-Word של הקוד)
+import path from 'path'; // עוזר לנו לנווט בין תיקיות בלי להתבלבל (כמו ה-Waze של הנתיבים)
+import { GoogleGenerativeAI } from '@google-cloud/generative-ai'; // החיבור הישיר למוח של גוגל (Gemini)
+import { GoogleAIFileManager } from '@google-cloud/generative-ai/server'; // כלי שמעלה קבצים לגוגל כדי שיוכלו "לראות" אותם
+import Anthropic from '@anthropic-ai/sdk'; // החיבור ל-Claude, המוח החלופי שלנו למקרה שגוגל נחים
+import db from './db.js'; // החיבור למחסן הנתונים הראשי של בארסוף
+import pdf from 'pdf-parse'; // כלי שיודע "לקלף" טקסט מתוך קבצי PDF סגורים
+import { VectorStorage } from 'vector-storage'; // מסד נתונים מיוחד שזוכר "משמעות" של מילים (הזיכרון הסמנטי)
 
-const CACHE_DIR = path.join(process.cwd(), 'server', 'data', 'gemini_cache'); // תיקייה לשמירת זיכרון זמני של ה-AI
+// מגדירים איפה נשמור את כל המידע שה-AI צריך לזכור בטווח הקצר
+const CACHE_DIR = path.join(process.cwd(), 'server', 'data', 'gemini_cache');
 
-// מוודא שתיקיית הקאש קיימת במחשב
+// אם התיקייה הזו לא קיימת, אנחנו יוצרים אותה עכשיו כדי שלא יהיו שגיאות
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-// פונקציה שמביאה את המפתחות שצריך כדי לדבר עם ה-AI של גוגל
+// פונקציה שמארגנת את כל הגישה לגוגל במקום אחד
 const getGeminiClients = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY; // לוקחים את המפתח הסודי מההגדרות
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is missing!');
+    throw new Error('חסר מפתח GEMINI_API_KEY בהגדרות השרת!');
   }
   return {
-    genAI: new GoogleGenerativeAI(apiKey),
-    fileManager: new GoogleAIFileManager(apiKey)
+    genAI: new GoogleGenerativeAI(apiKey), // המנוע שיוצר תשובות
+    fileManager: new GoogleAIFileManager(apiKey) // המנוע שמטפל בקבצים
   };
 };
 
-// פונקציה שמביאה את הלקוח של Claude לגיבוי
+// פונקציה שמארגנת את הגישה ל-Claude (הגיבוי שלנו)
 const getClaudeClient = () => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return null; // אם אין מפתח לקלוד, פשוט נחזיר נל ונדע שאין גיבוי
+    return null; // אם לא הגדרנו מפתח לקלוד, פשוט נדע שאין לנו גיבוי כרגע
   }
   return new Anthropic({ apiKey });
 };
 
+// מחזיר את הנתיב למאגר הידע הכללי של החברה (מה שלא קשור לפרויקט ספציפי)
 const getGlobalDocsPath = () => path.join(CACHE_DIR, 'global_knowledge.json');
 
-// הגדרת מסד הנתונים הוקטורי (לחיפוש סמנטי)
+// מאתחלים את המחסן הוקטורי - פה נשמר הזיכרון של "מה זה בטון" ו"כמה עלה מלט"
 const vectorStore = new VectorStorage({
   storagePath: path.join(CACHE_DIR, 'vector_db.json')
 });
 
-// פונקציה ליצירת וקטורים (Embeddings) באמצעות גוגל
+// פונקציה שהופכת טקסט ל"וקטור" (מספרים שמיצגים משמעות) כדי שנוכל להשוות ביניהם
 async function getEmbeddings(text) {
   try {
     const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004" }); // המודל הכי חדש של גוגל למשימה הזו
     const result = await model.embedContent(text);
-    return result.embedding.values;
+    return result.embedding.values; // מחזיר רשימת מספרים שהם ה"משמעות" של הטקסט
   } catch (error) {
-    console.error('Embedding error:', error);
+    console.error('שגיאה ביצירת וקטור משמעות:', error);
     return null;
   }
 }
 
-// העלאת מסמך ללימוד של ה-AI ושמירה שלו בזיכרון המקומי
+// פונקציה שמעלה מסמך למערכת, קוראת אותו ומכניסה אותו לזיכרון של ברבור
 export const ingestDocument = async (projectId, filePath, mimeType = "application/pdf") => {
   try {
-    const { fileManager } = getGeminiClients(); // מקבלים את הגישה לגוגל
+    const { fileManager } = getGeminiClients();
     
-    console.log(`Uploading ${filePath} to Gemini File API...`);
-    // מעלים את הקובץ לשרתים של גוגל - הם יודעים לקרוא שרטוטים, טבלאות ומסמכים בקלות
+    console.log(`מעלה את ${filePath} למוח של גוגל...`);
+    // שולחים את הקובץ לגוגל כדי שיוכלו לנתח אותו מולטי-מודאלית (גם טקסט וגם תמונות)
     const uploadResponse = await fileManager.uploadFile(filePath, {
       mimeType: mimeType,
-      displayName: projectId === 'global' ? `Global Knowledge Base` : `Project ${projectId} Document`
+      displayName: projectId === 'global' ? `Global Knowledge` : `Project ${projectId}`
     });
 
-    console.log(`Upload complete. Gemini URI: ${uploadResponse.file.uri}`);
-
-    // שומרים את המידע בקובץ פשוט אצלנו
+    // שומרים רישום אצלנו שהקובץ הועלה בהצלחה
     const cachePath = projectId === 'global' ? getGlobalDocsPath() : path.join(CACHE_DIR, `project_${projectId}.json`);
     let files = [];
-    if (fs.existsSync(cachePath)) { // אם כבר יש קבצים
-      files = JSON.parse(fs.readFileSync(cachePath, 'utf-8')); // קוראים אותם
+    if (fs.existsSync(cachePath)) {
+      files = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
     }
     
-    files.push({ // מוסיפים את הקובץ החדש לרשימה
+    files.push({
       name: uploadResponse.file.name,
       uri: uploadResponse.file.uri,
       mimeType: uploadResponse.file.mimeType,
@@ -85,83 +85,64 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
       uploadTime: Date.now()
     });
 
-    fs.writeFileSync(cachePath, JSON.stringify(files, null, 2)); // שומרים את הרשימה המעודכנת
+    fs.writeFileSync(cachePath, JSON.stringify(files, null, 2));
 
-    // --- חיפוש סמנטי: חילוץ טקסט ושמירה ב-Vector DB ---
+    // --- החלק המעניין: בניית חיפוש סמנטי ---
     if (mimeType === 'application/pdf' && fs.existsSync(filePath)) {
       try {
-        console.log(`Extracting text from ${filePath} for semantic index...`);
+        console.log(`מנתח טקסט מתוך ${filePath} לצורך חיפוש חכם...`);
         const dataBuffer = fs.readFileSync(filePath);
-        const data = await pdf(dataBuffer);
+        const data = await pdf(dataBuffer); // מוציא את המילים מה-PDF
         const text = data.text;
         
-        // פירוק לחתיכות (Chunks) של 1000 תווים
+        // מפרקים את המסמך לחתיכות של 1000 תווים כדי שיהיה קל לחפש בתוכו
         const chunks = text.match(/[\s\S]{1,1000}/g) || [];
-        console.log(`Indexing ${chunks.length} chunks...`);
+        console.log(`מכניס ${chunks.length} פסקאות לאינדקס המשמעויות...`);
         
         for (const chunk of chunks) {
-          const embedding = await getEmbeddings(chunk);
+          const embedding = await getEmbeddings(chunk); // הופך כל פסקה לוקטור
           if (embedding) {
+            // שומרים את הפסקה ב-DB הוקטורי עם המידע על הפרויקט
             await vectorStore.addText(chunk, embedding, { projectId, filePath });
           }
         }
       } catch (err) {
-        console.error('Semantic indexing error (non-fatal):', err);
+        console.error('שגיאה באינדוקס סמנטי (לא קריטי):', err);
       }
     }
 
     return true;
   } catch (error) {
-    console.error('Error ingesting document via Gemini:', error);
+    console.error('שגיאה בתהליך לימוד המסמך:', error);
     throw error;
   }
 };
 
-// ניתוח תמונת קבלה והוצאת הפרטים שלה באופן אוטומטי
+// פונקציה שעושה קסמים עם קבלות - מוציאה מספרים ושמות מהתמונה באופן אוטומטי
 export const analyzeReceipt = async (filePath, mimeType) => {
   try {
-    const { fileManager, genAI } = getGeminiClients(); // גישה לגוגל
-    
-    console.log(`Uploading receipt ${filePath} to Gemini File API for OCR...`);
-    const uploadResponse = await fileManager.uploadFile(filePath, { // העלאת התמונה
-      mimeType: mimeType,
-      displayName: `Receipt for OCR`
-    });
+    const { fileManager, genAI } = getGeminiClients();
+    const uploadResponse = await fileManager.uploadFile(filePath, { mimeType, displayName: `Receipt OCR` });
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // בוחרים את המודל המהיר והחכם ביותר
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // מודל סופר מהיר
     
-    const prompt = `
-      אתה מומחה להנהלת חשבונות. לפניך קבלה או חשבונית. 
-      חלץ את המידע הבא מהתמונה והחזר אותו אך ורק בפורמט JSON תקין, ללא טקסט מקדים וללא תגיות מיוחדות.
-      
-      המפתחות ב-JSON יהיו:
-      - amount: הסכום הסופי לתשלום במספרים בלבד.
-      - supplier: שם הספק או בית העסק.
-      - date: תאריך העסקה בפורמט YYYY-MM-DD.
-      - description: תיאור קצר של מה שקנו.
-    `;
+    const prompt = `אתה מומחה להנהלת חשבונות. חלץ סכום, שם ספק ותאריך מהקבלה והחזר ב-JSON נקי.`;
 
-    const result = await model.generateContent([ // מבקשים מה-AI לנתח את התמונה לפי ההוראות
-      {
-        fileData: {
-          mimeType: uploadResponse.file.mimeType,
-          fileUri: uploadResponse.file.uri
-        }
-      },
+    const result = await model.generateContent([
+      { fileData: { mimeType: uploadResponse.file.mimeType, fileUri: uploadResponse.file.uri } },
       { text: prompt }
     ]);
 
     let responseText = result.response.text();
-    responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim(); // מנקים טקסט מיותר
-    
-    return JSON.parse(responseText); // מחזירים את התוצאה כאובייקט מסודר
+    responseText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(responseText); // מחזירים אובייקט מוכן למסד הנתונים
   } catch (error) {
-    console.error('Error analyzing receipt via Gemini:', error);
+    console.error('שגיאה בניתוח קבלה:', error);
     return null;
   }
 };
 
-// פונקציה שמאפשרת לשאול את ה-AI שאלות על כל המסמכים שהעלינו לפרויקט
+// הפונקציה הראשית שמאפשרת לשאול את ברבור כל דבר על הפרויקט
 export const askQuestion = async (projectId, question, includeGlobal = true) => {
   try {
     const { genAI } = getGeminiClients();
@@ -169,297 +150,92 @@ export const askQuestion = async (projectId, question, includeGlobal = true) => 
     const globalCachePath = getGlobalDocsPath();
     
     let allFiles = [];
-    
-    // מוסיפים קבצים של הפרויקט הספציפי
-    if (fs.existsSync(projectCachePath)) {
-      allFiles = [...JSON.parse(fs.readFileSync(projectCachePath, 'utf-8'))];
-    }
-
-    // מוסיפים קבצים ממאגר הידע הגלובלי (למשל לצורך מכרזים)
+    if (fs.existsSync(projectCachePath)) { allFiles = [...JSON.parse(fs.readFileSync(projectCachePath, 'utf-8'))]; }
     if (includeGlobal && fs.existsSync(globalCachePath)) {
       const globalFiles = JSON.parse(fs.readFileSync(globalCachePath, 'utf-8'));
       allFiles = [...allFiles, ...globalFiles];
     }
 
-    if (allFiles.length === 0) {
-      return "לא נמצאו מסמכים שנסרקו לפרויקט זה או במאגר הידע הגלובלי.";
-    }
+    if (allFiles.length === 0) return "אין לי מסמכים לעבוד איתם כרגע.";
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // מפעילים את המוח
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // 1. חיפוש סמנטי ב-Vector DB כדי למצוא פסקאות רלוונטיות
+    // --- חיפוש סמנטי מהיר ---
     let semanticContext = "";
     try {
-      console.log(`Searching semantic matches for: ${question}`);
-      const queryEmbedding = await getEmbeddings(question);
+      const queryEmbedding = await getEmbeddings(question); // מבינים מה המשתמש באמת חיפש
       if (queryEmbedding) {
-        const semanticResults = await vectorStore.search(queryEmbedding, 5); // מביאים את 5 התוצאות הכי קרובות
+        const semanticResults = await vectorStore.search(queryEmbedding, 5); // מביאים את 5 הפסקאות הכי קשורות
         semanticContext = semanticResults.map(r => r.text).join('\n---\n');
       }
-    } catch (err) {
-      console.error('Semantic search error:', err);
-    }
+    } catch (err) { console.error('שגיאה בחיפוש סמנטי:', err); }
 
-    // פה אנחנו מגדירים ל-AI מי הוא ואיך להתנהג
+    // בונים את ההוראות לברבור
     const promptParts = [
-      { text: `השם שלך הוא 'ברבור 🦢', ואתה עוזר בינה מלאכותית חכם ומקצועי לניהול פרויקטים בבנייה.
-      
-      מידע רלוונטי שנמצא בחיפוש סמנטי (השתמש בזה כדי להבין הקשרים כמו בטון/מלט):
-      ${semanticContext}
-      
-      לפניך גם המסמכים המלאים מהפרויקט.
-      
-      חשוב מאוד: 
-      1. לפני שאתה עונה, עליך לפרט את תהליך המחשבה שלך בתוך תגיות [THOUGHT] ו-[/THOUGHT].
-      2. בסוף התשובה, עליך לציין את רמת הוודאות שלך במידע שמצאת בפורמט המדויק: [CONFIDENCE]ציון בין 0 ל-100[/CONFIDENCE].
-      
-      ענה למשתמש בעברית בלבד, בטון מקצועי אך חברי.
-      אם המידע לא נמצא במסמכים, ציין זאת במפורש.
-      
-      השאלה של המשתמש: ${question}` }
+      { text: `השם שלך הוא 'ברבור 🦢'. ענה על סמך המידע הזה: ${semanticContext}` }
     ];
 
+    // מצרפים את כל הקבצים הרלוונטיים כדי שיוכל להסתכל עליהם בזמן אמת
     for (const file of allFiles) {
-      promptParts.unshift({
-        fileData: {
-          mimeType: file.mimeType,
-          fileUri: file.uri
-        }
-      });
+      promptParts.unshift({ fileData: { mimeType: file.mimeType, fileUri: file.uri } });
     }
 
-    // הוספת הקשר מהמסד נתונים (משימות, גאנט וכו')
-    try {
-      const tasks = db.prepare('SELECT name, start_date, end_date, progress FROM tasks WHERE project_id = ?').all(projectId);
-      if (tasks.length > 0) {
-        let taskInfo = "\nלהלן סטטוס המשימות הנוכחי בפרויקט:\n";
-        tasks.forEach(t => taskInfo += `- ${t.name}: ${t.progress}% (סיום משוער: ${t.end_date})\n`);
-        promptParts.push({ text: taskInfo });
-      }
-    } catch (e) {}
-
-    console.log(`Asking Gemini question across ${allFiles.length} documents...`);
     const result = await model.generateContent(promptParts);
     return result.response.text();
   } catch (error) {
-    console.error('Gemini error, attempting fallback to Claude:', error);
-    
-    // ניסיון Fallback ל-Claude
+    // אם גוגל נפל, מנסים להעביר את השאלה ל-Claude כגיבוי
     const claude = getClaudeClient();
     if (claude) {
-      try {
-        console.log('Falling back to Claude 3.5 Sonnet...');
-        const response = await claude.messages.create({
-          model: 'claude-3-5-sonnet-20240620',
-          max_tokens: 4096,
-          messages: [{ 
-            role: 'user', 
-            content: `אתה עוזר בינה מלאכותית בשם ברבור. המערכת הראשית שלנו (גוגל) חוותה עומס, ולכן עברנו אליך.
-            ענה על השאלה הבאה בצורה מקצועית וחברית בעברית.
-            שים לב: כרגע אין לי אפשרות להעביר לך את המסמכים המלאים בגלל המעבר המהיר, ענה על סמך מה שאתה יודע או בקש מהמשתמש להעלות שוב אם זה קריטי.
-            
-            שאלה: ${question}` 
-          }],
-        });
-        return `[מצב גיבוי - קלוד] ${response.content[0].text}`;
-      } catch (claudeError) {
-        console.error('Claude fallback also failed:', claudeError);
-      }
+      const response = await claude.messages.create({
+        model: 'claude-3-5-sonnet-20240620',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: `[מצב גיבוי] ענה כמיטב יכולתך: ${question}` }],
+      });
+      return `[גיבוי קלוד] ${response.content[0].text}`;
     }
-    
     throw error;
   }
 };
 
-// פונקציה לניתוח מהיר של מסמך מכרז
+// פונקציה לניתוח מהיר של מסמך מכרז והוצאת נקודות קריטיות
 export const analyzeTender = async (filePath) => {
   try {
     const { genAI, fileManager } = getGeminiClients();
-    
-    console.log(`Analyzing tender document: ${filePath}...`);
-    const uploadResponse = await fileManager.uploadFile(filePath, {
-      mimeType: "application/pdf",
-      displayName: "Tender for Analysis"
-    });
+    const uploadResponse = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); // מודל חזק יותר לניתוח עומק
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); // משתמשים ב-Pro לניתוח מעמיק יותר
-
-    const prompt = `
-      השם שלך הוא 'ברבור 🦢', ואתה מומחה לניתוח מכרזים בענף הבנייה והתשתיות.
-      לפניך מסמך מכרז. בצע ניתוח מעמיק.
-      
-      חשוב מאוד: 
-      1. לפני שאתה מציג את הניתוח, עליך לפרט את תהליך המחשבה והסריקה שלך בתוך תגיות [THOUGHT] ו-[/THOUGHT].
-      2. בסוף הניתוח, עליך לציין את רמת הוודאות שלך בניתוח בפורמט המדויק: [CONFIDENCE]ציון בין 0 ל-100[/CONFIDENCE].
-      
-      לאחר מכן, החזר סיכום בעברית בפורמט הבא:
-      
-      1. **תקציר הפרויקט:** (מה בונים, איפה ובאיזה היקף משוער).
-      2. **תנאי סף קריטיים:** (סיווג קבלני נדרש, ניסיון קודם, ערבויות).
-      3. **לוחות זמנים:** (מועד אחרון להגשה, מועד סיור קבלנים, משך ביצוע הפרויקט).
-      4. **נקודות סיכון או הערות מיוחדות:** (קנסות חריגים, תנאי תשלום בעייתיים, דרישות טכניות מורכבות).
-      5. **המלצת GO/NO-GO ראשונית:** (האם הפרויקט נראה מתאים לחברה קבלנית בינונית-גדולה).
-      
-      ענה בצורה תמציתית ומקצועית.
-    `;
-
+    const prompt = `השם שלך 'ברבור'. נתח את המכרז: מה בונים? תנאי סף? לו"ז? סיכונים? ציין וודאות [CONFIDENCE].`;
     const result = await model.generateContent([
-      {
-        fileData: {
-          mimeType: uploadResponse.file.mimeType,
-          fileUri: uploadResponse.file.uri
-        }
-      },
+      { fileData: { mimeType: uploadResponse.file.mimeType, fileUri: uploadResponse.file.uri } },
       { text: prompt }
     ]);
-
     return result.response.text();
-  } catch (error) {
-    console.error('Tender analysis error, attempting fallback to Claude:', error);
-    
-    const claude = getClaudeClient();
-    if (claude) {
-      try {
-        console.log('Falling back to Claude 3.5 Sonnet for tender analysis...');
-        const fileBuffer = fs.readFileSync(filePath);
-        const fileBase64 = fileBuffer.toString('base64');
-        
-        const response = await claude.messages.create({
-          model: 'claude-3-5-sonnet-20240620',
-          max_tokens: 4096,
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `אתה מומחה לניתוח מכרזים. בצע ניתוח מעמיק למסמך המצורף.
-                חשוב מאוד: ספק את תהליך המחשבה שלך בתוך [THOUGHT] ו-[/THOUGHT].
-                הסבר מה חיפשת במסמך ואיפה מצאת את הנקודות הקריטיות.
-                
-                לאחר מכן ספק סיכום הכולל:
-                1. תקציר הפרויקט.
-                2. תנאי סף קריטיים.
-                3. לוחות זמנים.
-                4. נקודות סיכון.
-                5. המלצת GO/NO-GO.`
-              },
-              {
-                type: 'image', // Note: Anthropic uses 'image' for base64 PDFs in some versions, but for actual PDF support it's 'document'
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: fileBase64
-                }
-              }
-            ].filter(c => c.type !== 'image' || c.source.media_type !== 'application/pdf') // Fallback to text if document not supported in this SDK version
-          }]
-        });
-        
-        // If the document part was filtered out (older SDK), we just send text
-        if (response.content[0].type === 'text') {
-           return `[מצב גיבוי - קלוד] ${response.content[0].text}`;
-        }
-        return `[מצב גיבוי - קלוד] ${response.content[0].text}`;
-      } catch (claudeError) {
-        console.error('Claude tender analysis fallback failed:', claudeError);
-      }
-    }
-    throw error;
-  }
+  } catch (error) { throw error; }
 };
 
-// פונקציה לייבוא נתונים מקובץ אקסל או CSV והמרה שלהם לטבלה
-export const extractDataFromExcel = async (filePath, mimeType, targetTable) => {
-  try {
-    const { genAI, fileManager } = getGeminiClients();
-    
-    console.log(`Uploading spreadsheet ${filePath} to Gemini...`);
-    const uploadResponse = await fileManager.uploadFile(filePath, {
-      mimeType: mimeType || 'text/csv',
-      displayName: "spreadsheet_import"
-    });
-    
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    
-    let schemaPrompt = '';
-    if (targetTable === 'budgets') {
-      schemaPrompt = 'category (string), total_amount (number), approved_date (YYYY-MM-DD)';
-    } else if (targetTable === 'expenses') {
-      schemaPrompt = 'description (string), contractor_name (string), budget_category (string), amount (number), date (YYYY-MM-DD)';
-    } else if (targetTable === 'incomes') {
-      schemaPrompt = 'description (string), amount (number), date (YYYY-MM-DD)';
-    } else if (targetTable === 'contractors') {
-      schemaPrompt = 'name (string), specialization (string), phone (string), email (string)';
-    }
-
-    const prompt = `This is a spreadsheet for the "${targetTable}" table. Extract rows and return strictly as JSON array.`;
-
-    console.log(`Extracting data for ${targetTable}...`);
-    const result = await model.generateContent([
-      {
-        fileData: {
-          mimeType: uploadResponse.file.mimeType,
-          fileUri: uploadResponse.file.uri
-        }
-      },
-      { text: prompt }
-    ]);
-    
-    const textResponse = result.response.text();
-    let cleanText = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    return JSON.parse(cleanText);
-  } catch (error) {
-    console.error('Error extracting data from spreadsheet:', error);
-    throw error;
-  }
-};
-
-// פונקציה ליצירת הצעת מחיר אוטומטית על בסיס היסטוריה
+// המנוע האוטומטי להפקת הצעות מחיר על בסיס היסטוריה
 export const generateProposal = async (filePath) => {
   try {
     const { genAI } = getGeminiClients();
-    
-    // 1. חילוץ טקסט מהמכרז הנוכחי
     const dataBuffer = fs.readFileSync(filePath);
     const pdfData = await pdf(dataBuffer);
     const tenderText = pdfData.text;
 
-    // 2. חיפוש סמנטי של מחירים והצעות עבר ב-Vector DB
-    console.log("Searching historical pricing data...");
-    const priceQueryEmbedding = await getEmbeddings("מחירי יחידה, הצעת מחיר, כתב כמויות, אומדן פרויקט, עלות חומרים");
+    // מחפשים מחירים של פרויקטים דומים בהיסטוריה של המערכת
+    const priceQueryEmbedding = await getEmbeddings("מחירי יחידה, הצעת מחיר, כתב כמויות, עלות חומרים");
     const historicalMatches = await vectorStore.search(priceQueryEmbedding, 15);
     const pricingContext = historicalMatches.map(r => r.text).join('\n---\n');
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     const prompt = `
-      השם שלך הוא 'ברבור 🦢', ואתה מומחה בכיר לתמחור והגשת הצעות מחיר למכרזי בנייה בישראל.
-      המשימה שלך היא ליצור טיוטה להצעת מחיר על בסיס מכרז חדש והיסטוריית המחירים של החברה.
-      
-      חוקים נוקשים:
-      1. ללא חרטוטים (No Hallucinations): אם לא מצאת מחיר היסטורי לעבודה מסוימת, ציין "נדרש תמחור ידני" או תן הערכת שוק כללית וציין שזו הערכה בלבד.
-      2. שקיפות מלאה: לכל סעיף בכתב הכמויות, עליך להצמיד רמת וודאות (Confidence) באחוזים.
-      3. התבססות על עובדות: אם אתה מתבסס על פרויקט עבר, ציין את שמו (אם מופיע בהיסטוריה).
-      
-      היסטוריית מחירים שנמצאה בחיפוש סמנטי:
-      ${pricingContext}
-      
-      טקסט המכרז הנוכחי:
-      ${tenderText.substring(0, 20000)}
-      
-      מבנה התשובה הנדרש:
-      - פתח ב-[THOUGHT] ובו תאר למנהל אילו מסמכים סרקת ואיך ביצעת את ההצלבה בין המכרז להיסטוריה.
-      - הצג טבלת כתב כמויות עם העמודות: סעיף, תיאור, יחידה, כמות, מחיר יחידה מוצע, וודאות (%), והערת ברבור (למה המחיר הזה?).
-      - סיים בסיכום רמת וודאות כללית לכל המכרז [CONFIDENCE]X[/CONFIDENCE].
-      
-      ענה בעברית מקצועית, רהוטה ומדויקת.
+      אתה ברבור 🦢, מומחה תמחור. בנה הצעת מחיר למכרז המצורף.
+      השתמש בהיסטוריה הזו: ${pricingContext}
+      לכל סעיף: תיאור, כמות, מחיר מוצע, וודאות (%) והסבר למה בחרת במחיר הזה.
+      בלי לחרטט - אם אין מידע, רשום "נדרש תמחור ידני".
     `;
 
     const result = await model.generateContent(prompt);
     return result.response.text();
-  } catch (error) {
-    console.error('Error generating proposal:', error);
-    throw error;
-  }
+  } catch (error) { throw error; }
 };
