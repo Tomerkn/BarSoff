@@ -6,7 +6,7 @@ import fs from 'fs'; // כלי לעבודה עם מערכת הקבצים של ה
 import { Storage } from '@google-cloud/storage'; // התחברות לאחסון הענן של גוגל
 import db from './db.js'; // מביאים את החיבור למסד הנתונים שלנו
 import './seed.js'; // מוודאים שיש נתונים ראשוניים בבסיס הנתונים
-import { ingestDocument, askQuestion, analyzeReceipt, analyzeTender } from './ai.js'; // מביאים את המוח של הבינה המלאכותית
+import { ingestDocument, askQuestion, analyzeReceipt, analyzeTender, generateProposal } from './ai.js'; // מביאים את המוח של הבינה המלאכותית
 
 const app = express(); // יוצרים את האפליקציה של השרת
 const PORT = process.env.PORT || 3001; // קובעים על איזה פורט השרת ירוץ
@@ -390,15 +390,50 @@ app.post('/api/global-knowledge', upload.single('file'), async (req, res) => {
   }
 });
 
-// --- ניתוח מכרז חכם ---
-app.post('/api/analyze-tender', upload.single('file'), async (req, res) => {
+// --- ניהול מכרזים מלא ---
+app.get('/api/tenders', (req, res) => { // קבלת כל המכרזים
+  const tenders = db.prepare('SELECT * FROM tenders ORDER BY upload_date DESC').all();
+  res.json(tenders);
+});
+
+app.post('/api/tenders', upload.single('file'), async (req, res) => { // העלאת מכרז חדש
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const originalName = req.file.originalname;
+  const filePath = req.file.path;
+  
   try {
-    const analysis = await analyzeTender(req.file.path);
-    res.json({ analysis });
+    // 1. שמירה במסד הנתונים
+    const insert = db.prepare('INSERT INTO tenders (name, filename, upload_date, status) VALUES (?, ?, ?, ?)');
+    const info = insert.run(originalName, req.file.filename, new Date().toISOString(), 'מנתח...');
+    const tenderId = info.lastInsertRowid;
+
+    // 2. ניתוח ראשוני (בצורה אסינכרונית כדי לא לחסום את המשתמש)
+    analyzeTender(filePath).then(analysis => {
+      db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
+      // הוספה גם ל-Vector DB לחיפוש עתידי
+      ingestDocument('global', filePath);
+    }).catch(err => {
+      console.error('Async analysis error:', err);
+      db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה בניתוח', tenderId);
+    });
+
+    res.status(201).json({ id: tenderId, name: originalName });
   } catch (error) {
-    console.error('Tender analysis error:', error);
-    res.status(500).json({ error: 'נכשלנו בניתוח המכרז. וודא שהקובץ הוא PDF תקין ונסה שוב.' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/tenders/:id/proposal', async (req, res) => { // יצירת הצעת מחיר
+  const tender = db.prepare('SELECT * FROM tenders WHERE id = ?').get(req.params.id);
+  if (!tender) return res.status(404).json({ error: 'Tender not found' });
+  
+  const filePath = path.join(UPLOADS_DIR, tender.filename);
+  try {
+    const proposal = await generateProposal(filePath);
+    db.prepare('UPDATE tenders SET proposal = ?, status = ? WHERE id = ?').run(proposal, 'הצעה מוכנה', req.params.id);
+    res.json({ proposal });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -130,6 +130,17 @@ function initDB() {
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
       FOREIGN KEY (contractor_id) REFERENCES contractors(id)
     );
+
+    CREATE TABLE IF NOT EXISTS tenders ( -- טבלת מכרזים והצעות מחיר
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, -- שם המכרז
+      filename TEXT NOT NULL, -- שם הקובץ בשרת
+      url TEXT, -- כתובת בענן
+      upload_date TEXT, -- מתי הועלה
+      analysis TEXT, -- הניתוח המלא של Gemini
+      proposal TEXT, -- הצעת המחיר שנוצרה
+      status TEXT DEFAULT 'ממתין לניתוח'
+    );
   `);
   
   // עדכון מבנה הטבלה במידה וחסרה עמודת תיקיות

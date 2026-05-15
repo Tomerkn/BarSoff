@@ -15,6 +15,7 @@ import { ProjectMediaPage } from './pages/ProjectMediaPage'; // מביאים א�
 import { ProjectIncomes } from './pages/ProjectIncomes'; // מביאים את מסך ההכנסות
 import { DailyLogs } from './pages/DailyLogs'; // מביאים את מסך יומן העבודה
 import { Warranty } from './pages/Warranty'; // מביאים את מסך שנת הבדק
+import Tenders from './pages/Tenders'; // מביאים את מסך המכרזים החכם
 import { AIFloatingWidget } from './components/ui/AIFloatingWidget'; // מביאים את הבוט החכם שצף על המסך
 import { ProfileSelection } from './pages/ProfileSelection'; // מביאים את מסך בחירת המשתמש
 
@@ -68,6 +69,7 @@ function AppContent() { // הפונקציה הראשית שמחליטה מה ל�
           <Routes> {/* רשימה של כל הכתובות האפשריות באתר */}
             <Route path="/" element={<Projects />} /> {/* דף הבית מראה את רשימת הפרויקטים */}
             <Route path="/overview" element={<Overview />} /> {/* דף ניהול כללי */}
+            <Route path="/tenders" element={<Tenders />} /> {/* דף מכרזים חכם */}
             
             <Route path="/projects/:projectId" element={<Dashboard />} /> {/* דף פרויקט - נתונים וגרפים */}
             <Route path="/projects/:projectId/daily-logs" element={<DailyLogs />} /> {/* יומן עבודה של פרויקט */}

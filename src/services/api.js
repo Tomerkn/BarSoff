@@ -137,5 +137,29 @@ export const api = { // יצירת השליח שמדבר עם השרת
     });
     if (!response.ok) throw new Error('נכשל בהעלאת ידע ארגוני');
     return response.json();
+  },
+  
+  // --- ניהול מכרזים מלא ---
+  getTenders: async () => {
+    const response = await fetch(`${API_BASE_URL}/tenders`);
+    if (!response.ok) throw new Error('נכשל בטעינת מכרזים');
+    return response.json();
+  },
+  createTender: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE_URL}/tenders`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('נכשל בהעלאת מכרז');
+    return response.json();
+  },
+  generateTenderProposal: async (tenderId) => {
+    const response = await fetch(`${API_BASE_URL}/tenders/${tenderId}/proposal`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('נכשל בהפקת הצעת מחיר');
+    return response.json();
   }
 };

@@ -414,3 +414,52 @@ export const extractDataFromExcel = async (filePath, mimeType, targetTable) => {
     throw error;
   }
 };
+
+// פונקציה ליצירת הצעת מחיר אוטומטית על בסיס היסטוריה
+export const generateProposal = async (filePath) => {
+  try {
+    const { genAI } = getGeminiClients();
+    
+    // 1. חילוץ טקסט מהמכרז הנוכחי
+    const dataBuffer = fs.readFileSync(filePath);
+    const pdfData = await pdf(dataBuffer);
+    const tenderText = pdfData.text;
+
+    // 2. חיפוש סמנטי של מחירים והצעות עבר ב-Vector DB
+    console.log("Searching historical pricing data...");
+    const priceQueryEmbedding = await getEmbeddings("מחירי יחידה, הצעת מחיר, כתב כמויות, אומדן פרויקט, עלות חומרים");
+    const historicalMatches = await vectorStore.search(priceQueryEmbedding, 15);
+    const pricingContext = historicalMatches.map(r => r.text).join('\n---\n');
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+
+    const prompt = `
+      השם שלך הוא 'ברבור 🦢', ואתה מומחה בכיר לתמחור והגשת הצעות מחיר למכרזי בנייה בישראל.
+      המשימה שלך היא ליצור טיוטה להצעת מחיר על בסיס מכרז חדש והיסטוריית המחירים של החברה.
+      
+      חוקים נוקשים:
+      1. ללא חרטוטים (No Hallucinations): אם לא מצאת מחיר היסטורי לעבודה מסוימת, ציין "נדרש תמחור ידני" או תן הערכת שוק כללית וציין שזו הערכה בלבד.
+      2. שקיפות מלאה: לכל סעיף בכתב הכמויות, עליך להצמיד רמת וודאות (Confidence) באחוזים.
+      3. התבססות על עובדות: אם אתה מתבסס על פרויקט עבר, ציין את שמו (אם מופיע בהיסטוריה).
+      
+      היסטוריית מחירים שנמצאה בחיפוש סמנטי:
+      ${pricingContext}
+      
+      טקסט המכרז הנוכחי:
+      ${tenderText.substring(0, 20000)}
+      
+      מבנה התשובה הנדרש:
+      - פתח ב-[THOUGHT] ובו תאר למנהל אילו מסמכים סרקת ואיך ביצעת את ההצלבה בין המכרז להיסטוריה.
+      - הצג טבלת כתב כמויות עם העמודות: סעיף, תיאור, יחידה, כמות, מחיר יחידה מוצע, וודאות (%), והערת ברבור (למה המחיר הזה?).
+      - סיים בסיכום רמת וודאות כללית לכל המכרז [CONFIDENCE]X[/CONFIDENCE].
+      
+      ענה בעברית מקצועית, רהוטה ומדויקת.
+    `;
+
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  } catch (error) {
+    console.error('Error generating proposal:', error);
+    throw error;
+  }
+};

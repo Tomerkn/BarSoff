@@ -13,7 +13,8 @@ import {
   ArrowUpRight,
   Settings,
   ClipboardCheck,
-  ShieldCheck
+  ShieldCheck,
+  FileSearch
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
@@ -21,6 +22,7 @@ import { X } from 'lucide-react';
 const globalNavItems = [
   { name: 'פרויקטים', path: '/', icon: Briefcase },
   { name: 'דאשבורד מנהל', path: '/overview', icon: LayoutDashboard },
+  { name: 'מכרזים', path: '/tenders', icon: FileSearch },
 ];
 
 const getProjectNavItems = (projectId) => [
