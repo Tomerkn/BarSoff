@@ -38,21 +38,29 @@ app.get('/api/projects', (req, res) => {
 });
 
 app.get('/api/projects/:id', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+  const pid = Number(req.params.id);
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(pid);
   res.json(project);
 });
 
 app.get('/api/projects/:id/analytics', (req, res) => {
+  const pid = Number(req.params.id);
+  console.log(`🔍 Fetching analytics for project ID: ${pid}`);
   try {
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(pid);
+    if (!project) {
+      console.error(`❌ Project ${pid} not found in DB`);
+      return res.status(404).json({ error: 'Project not found' });
+    }
 
     const stats = db.prepare(`
       SELECT 
         (SELECT IFNULL(SUM(total_amount), 0) FROM budgets WHERE project_id = ?) as totalBudget,
         (SELECT IFNULL(SUM(amount), 0) FROM expenses WHERE project_id = ?) as actualExecution,
         (SELECT IFNULL(SUM(amount), 0) FROM incomes WHERE project_id = ?) as totalIncomes
-    `).get(req.params.id, req.params.id, req.params.id);
+    `).get(pid, pid, pid);
+    
+    // שאר הקוד נשאר זהה...
 
     const breakdown = db.prepare(`
       SELECT 
@@ -60,7 +68,7 @@ app.get('/api/projects/:id/analytics', (req, res) => {
         IFNULL((SELECT SUM(amount) FROM expenses WHERE budget_id = b.id), 0) as actual
       FROM budgets b
       WHERE b.project_id = ?
-    `).all(req.params.id);
+    `).all(pid);
 
     const profitLoss = stats.totalIncomes - stats.actualExecution;
     const utilization = stats.totalBudget > 0 ? (stats.actualExecution / stats.totalBudget) * 100 : 0;
