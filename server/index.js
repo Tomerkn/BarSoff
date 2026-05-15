@@ -40,6 +40,11 @@ app.use(express.json()); // מאפשרים לשלוח ולקבל מידע בפו
 // בדיקת "דופק" לשרת - לראות שהכל עובד ונושם
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// --- הגשת קבצי האתר (Frontend) ---
+const __dirname = path.resolve();
+// אומרים לשרת איפה נמצאים הקבצים המוכנים של האתר
+app.use(express.static(path.join(__dirname, 'dist')));
+
 // --- עולם הפרויקטים ---
 app.get('/api/projects', (req, res) => { // מחזיר את רשימת כל הפרויקטים שיש לנו
   const projects = db.prepare('SELECT * FROM projects').all();
@@ -149,6 +154,11 @@ app.get('/api/analytics/global', (req, res) => { // מחזיר מספרים גד
       (SELECT COUNT(*) FROM projects WHERE status = 'תקין') as activeProjects
   `).get();
   res.json(data);
+});
+
+// כל בקשה שהיא לא API - תשלח את המשתמש חזרה לאתר הראשי (index.html)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // מפעילים את השרת וגורמים לו להקשיב לעולם
