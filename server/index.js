@@ -267,3 +267,4 @@ app.listen(PORT, () => {
 });
 // Triggering automated deployment pipeline check
 // Re-triggering pipeline with correct secret name
+// Triggering deployment after fixing IAM permissions
