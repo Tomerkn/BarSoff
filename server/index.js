@@ -41,9 +41,9 @@ app.use(express.json()); // מאפשרים לשלוח ולקבל מידע בפו
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // --- הגשת קבצי האתר (Frontend) ---
-const __dirname = path.resolve();
+const root = path.resolve();
 // אומרים לשרת איפה נמצאים הקבצים המוכנים של האתר
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(root, 'dist')));
 
 // --- עולם הפרויקטים ---
 app.get('/api/projects', (req, res) => { // מחזיר את רשימת כל הפרויקטים שיש לנו
@@ -158,7 +158,7 @@ app.get('/api/analytics/global', (req, res) => { // מחזיר מספרים גד
 
 // כל בקשה שהיא לא API ולא נמצא לה נתיב - תשלח את המשתמש חזרה לאתר הראשי (index.html)
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  res.sendFile(path.join(root, 'dist', 'index.html'));
 });
 
 // מפעילים את השרת וגורמים לו להקשיב לעולם
