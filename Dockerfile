@@ -1,9 +1,14 @@
 # Stage 1: Frontend build
-FROM node:20-alpine AS frontend-build
+FROM node:20-slim AS frontend-build
 WORKDIR /app
 
-# Install build tools for native modules (needed for vector-storage, better-sqlite3 etc)
-RUN apk add --no-cache python3 make g++ gcc musl-dev
+# Install build tools for native modules
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
@@ -12,14 +17,18 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
 
-# Install build tools also in production for native modules that are compiled during install
-RUN apk add --no-cache python3 make g++ gcc musl-dev
+# Install runtime dependencies for better-sqlite3 and others
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-# Use --legacy-peer-deps and include dev deps if needed for native builds, but usually --production is fine if tools are present
 RUN npm install --production --legacy-peer-deps
 
 # Copy backend code
