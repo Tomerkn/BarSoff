@@ -61,6 +61,27 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
   res.status(201).json({ id: tenderId });
 });
 
+// התאמה לכתובת שהאתר מחפש
+app.post('/api/analyze-tender', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).send('No file uploaded');
+  const insert = db.prepare('INSERT INTO tenders (name, filename, upload_date, status) VALUES (?, ?, ?, ?)');
+  const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
+  const tenderId = info.lastInsertRowid;
+  
+  analyzeTender(req.file.path, tenderId).then(analysis => {
+    db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
+    ingestDocument('global', req.file.path);
+  }).catch(e => db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId));
+
+  res.status(201).json({ id: tenderId });
+});
+
+app.post('/api/global-knowledge', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).send('No file uploaded');
+  await ingestDocument('global', req.file.path);
+  res.json({ success: true });
+});
+
 app.post('/api/tenders/:id/proposal', async (req, res) => {
   const tender = db.prepare('SELECT * FROM tenders WHERE id = ?').get(req.params.id);
   generateProposal(path.join(UPLOADS_DIR, tender.filename), req.params.id).then(proposal => {

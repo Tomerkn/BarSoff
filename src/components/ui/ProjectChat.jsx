@@ -5,7 +5,7 @@ import { Bot, Send, Upload, FileText, Loader2, Paperclip, X, ShieldCheck, HelpCi
 export function ProjectChat({ projectId }) { // הרכיב שאחראי על הצ'אט החכם עם ברבור
   // --- המשתנים של הצ'אט (מה המצב כרגע?) ---
   const [messages, setMessages] = useState([ // רשימת ההודעות שרואים על המסך
-    { id: 1, type: 'bot', text: 'שלום, אני ברבור 🦢. אני מכיר את כל המסמכים שהעליתם. במה אוכל לעזור היום?' }
+    { id: 1, type: 'bot', text: 'אהלן, ברבור כאן 🦢. אני שולט בכל המסמכים והנתונים של הפרויקט. מה נרצה לבדוק היום? אני יכול לעבור על הצעות מחיר, תקציבים או כל מה שקבור באותיות הקטנות.' }
   ]);
   const [input, setInput] = useState(''); // מה שהמשתמש כותב כרגע בתיבת הטקסט
   const [loading, setLoading] = useState(false); // האם ברבור חושב על תשובה כרגע?
