@@ -40,9 +40,15 @@ const getClaudeClient = () => {
   return apiKey ? new Anthropic({ apiKey }) : null;
 };
 
-// זיכרון וקטורי לחיפוש סמנטי
+// זיכרון וקטורי לחיפוש סמנטי - מחברים אותו לפונקציית ה-Embedding של גוגל
 const vectorStore = new VectorStorage({
-  storagePath: path.join(CACHE_DIR, 'vector_db.json')
+  storagePath: path.join(CACHE_DIR, 'vector_db.json'),
+  embedTextsFn: async (texts) => {
+    const { genAI } = getGeminiClients();
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    const results = await Promise.all(texts.map(t => model.embedContent(t)));
+    return results.map(r => r.embedding.values);
+  }
 });
 
 // הפיכת טקסט ל"וקטור משמעות"

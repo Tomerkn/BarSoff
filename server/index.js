@@ -157,7 +157,7 @@ app.get('/api/analytics/global', (req, res) => { // מחזיר מספרים גד
 });
 
 // כל בקשה שהיא לא API - תשלח את המשתמש חזרה לאתר הראשי (index.html)
-app.get('*', (req, res) => {
+app.get('(.*)', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
