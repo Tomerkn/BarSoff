@@ -77,25 +77,25 @@ export function Overview() { // דף מבט-על ארגוני של כל החבר
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KpiCard 
           title="סה״כ פרויקטים (כללי)" 
-          value={analytics.totalProjects.toString()} 
+          value={(analytics?.totalProjects || 0).toString()} 
           icon={Briefcase} 
         />
         <KpiCard 
           title="פרויקטים פעילים" 
-          value={analytics.activeProjects.toString()} 
+          value={(analytics?.activeProjects || 0).toString()} 
           icon={CheckCircle} 
           trend="+2 החודש"
         />
         <KpiCard 
           title="תקציב מנוהל כולל" 
-          value={formatCurrency(analytics.totalBudget)} 
+          value={formatCurrency(analytics?.totalBudget || 0)} 
           icon={Wallet} 
         />
         <KpiCard 
           title="קריאות שנת בדק (פתוחות)" 
-          value={analytics.openWarrantyTickets.toString()} 
+          value={(analytics?.openWarrantyTickets || 0).toString()} 
           icon={ShieldCheck} 
-          subtext={analytics.openWarrantyTickets > 0 ? "דורש התייחסות" : "הכל מטופל"}
+          subtext={(analytics?.openWarrantyTickets || 0) > 0 ? "דורש התייחסות" : "הכל מטופל"}
         />
       </div>
 
@@ -129,7 +129,7 @@ export function Overview() { // דף מבט-על ארגוני של כל החבר
           </h2>
           
           <div className="flex-1 flex flex-col gap-3">
-            {analytics.openWarrantyTickets > 0 && (
+            {(analytics?.openWarrantyTickets || 0) > 0 && (
               <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
                 <p className="text-orange-700 dark:text-orange-400 font-medium text-sm">
                   יש לך {analytics.openWarrantyTickets} קריאות "שנת בדק" פתוחות שממתינות לטיפול וליווי.
@@ -137,10 +137,10 @@ export function Overview() { // דף מבט-על ארגוני של כל החבר
               </div>
             )}
             
-            {(analytics.totalProjects - analytics.activeProjects) > 0 && (
+            {((analytics?.totalProjects || 0) - (analytics?.activeProjects || 0)) > 0 && (
               <div className="p-4 bg-surface-hover border border-border rounded-lg">
                 <p className="text-text-primary font-medium text-sm">
-                  {analytics.totalProjects - analytics.activeProjects} פרויקטים ממתינים לאישור או שהושהה הסטטוס שלהם.
+                  {(analytics.totalProjects - analytics.activeProjects)} פרויקטים ממתינים לאישור או שהושהה הסטטוס שלהם.
                 </p>
               </div>
             )}

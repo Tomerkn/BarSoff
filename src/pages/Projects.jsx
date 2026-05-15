@@ -131,7 +131,9 @@ export function Projects() { // דף ניהול הפרויקטים הראשי
             
             <div className="border-t border-border pt-4 mt-4 text-sm text-text-secondary flex justify-between">
               <span>תאריך יעד:</span>
-              <span className="font-medium text-text-primary">{new Date(project.end_date).toLocaleDateString('he-IL')}</span>
+              <span className="font-medium text-text-primary">
+                {project.end_date ? new Date(project.end_date).toLocaleDateString('he-IL') : 'לא הוגדר'}
+              </span>
             </div>
           </Link>
         ))}

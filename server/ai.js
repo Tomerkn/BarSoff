@@ -1,61 +1,50 @@
-import fs from 'fs'; // כלי לקריאה וכתיבה של קבצים
-import path from 'path'; // כלי לניהול נתיבי תיקיות
-import { GoogleGenerativeAI } from '@google/generative-ai'; // החיבור הישיר למוח של גוגל (Gemini)
-import { GoogleAIFileManager } from '@google/generative-ai/server'; // ניהול קבצים מול גוגל
-import Anthropic from '@anthropic-ai/sdk'; // הגיבוי שלנו - Claude
-import db from './db.js'; // חיבור למסד הנתונים של בארסוף
+import fs from 'fs';
+import path from 'path';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleAIFileManager } from '@google/generative-ai/server';
+import Anthropic from '@anthropic-ai/sdk';
+import db from './db.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
-// איפה שומרים את הזיכרון הזמני של ה-AI
-const CACHE_DIR = path.join(process.cwd(), 'server', 'data', 'gemini_cache');
+// משתמשים ב-/tmp לכתיבה בענן
+const CACHE_DIR = '/tmp/barsuf_data/ai_cache';
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 const VECTOR_DB_PATH = path.join(CACHE_DIR, 'vector_db.json');
 
-// פונקציית עזר לעדכון סטטוס חי במסד הנתונים
 const updateLiveStatus = (tenderId, statusMsg) => {
   try {
     if (tenderId) {
       db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run(statusMsg, tenderId);
-      console.log(`[LIVE STATUS] Tender ${tenderId}: ${statusMsg}`);
     }
-  } catch (e) { console.error('Failed to update live status:', e); }
+  } catch (e) { console.error('Status update failed:', e); }
 };
 
-// התחברות לגוגל
 const getGeminiClients = () => {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('חסר מפתח GEMINI_API_KEY!');
-  return {
-    genAI: new GoogleGenerativeAI(apiKey),
-    fileManager: new GoogleAIFileManager(apiKey)
-  };
+  if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+  return { genAI: new GoogleGenerativeAI(apiKey), fileManager: new GoogleAIFileManager(apiKey) };
 };
 
-// הפיכת טקסט ל"וקטור משמעות"
 async function getEmbeddings(text) {
   try {
     const { genAI } = getGeminiClients();
     const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
     const result = await model.embedContent(text);
     return result.embedding.values;
-  } catch (error) { return null; }
+  } catch (e) { return null; }
 }
 
-// מנגנון זיכרון וקטורי פשוט ויציב לשרת
 const vectorStore = {
   data: fs.existsSync(VECTOR_DB_PATH) ? JSON.parse(fs.readFileSync(VECTOR_DB_PATH)) : [],
-  
   async addText(text, embedding, metadata) {
     this.data.push({ text, embedding, metadata });
     fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(this.data));
   },
-
   async search(queryEmbedding, limit = 5) {
     if (!queryEmbedding) return [];
-    // חישוב דמיון קוסינוס (Cosine Similarity) - הדרך של ה-AI להבין כמה שני משפטים קרובים במשמעות
     const results = this.data.map(item => {
       const dotProduct = item.embedding.reduce((sum, val, i) => sum + val * queryEmbedding[i], 0);
       const mag1 = Math.sqrt(item.embedding.reduce((sum, val) => sum + val * val, 0));
@@ -66,103 +55,58 @@ const vectorStore = {
   }
 };
 
-// לימוד מסמך והכנסתו לזיכרון
 export const ingestDocument = async (projectId, filePath, mimeType = "application/pdf") => {
   try {
     const { fileManager } = getGeminiClients();
-    const uploadResponse = await fileManager.uploadFile(filePath, {
-      mimeType,
-      displayName: projectId === 'global' ? `Global` : `Project ${projectId}`
-    });
-
+    await fileManager.uploadFile(filePath, { mimeType, displayName: `Project ${projectId}` });
     if (mimeType === 'application/pdf') {
-      const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdfParse(dataBuffer);
+      const data = await pdfParse(fs.readFileSync(filePath));
       const chunks = data.text.match(/[\s\S]{1,1000}/g) || [];
       for (const chunk of chunks) {
         const embedding = await getEmbeddings(chunk);
-        if (embedding) await vectorStore.addText(chunk, embedding, { projectId, filePath });
+        if (embedding) await vectorStore.addText(chunk, embedding, { projectId });
       }
     }
     return true;
-  } catch (error) { throw error; }
+  } catch (e) { console.error('Ingest failed:', e); return false; }
 };
 
-// ניתוח מכרז חכם
 export const analyzeTender = async (filePath, tenderId) => {
-  try {
-    updateLiveStatus(tenderId, "מעלה את המכרז לסריקה...");
-    const { genAI, fileManager } = getGeminiClients();
-    const uploadResponse = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
-    
-    updateLiveStatus(tenderId, "ברבור קורא את האותיות הקטנות...");
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-
-    const prompt = `נתח את המכרז לעומק. ציין תקציר, תנאי סף, לו"ז, וסיכונים. השתמש ב-[THOUGHT] ו-[CONFIDENCE]. ענה בעברית.`;
-    const result = await model.generateContent([
-      { fileData: { mimeType: uploadResponse.file.mimeType, fileUri: uploadResponse.file.uri } },
-      { text: prompt }
-    ]);
-
-    updateLiveStatus(tenderId, "מסיים את הניתוח...");
-    return result.response.text();
-  } catch (error) { 
-    updateLiveStatus(tenderId, "שגיאה בניתוח המכרז.");
-    throw error; 
-  }
+  updateLiveStatus(tenderId, "סורק מכרז...");
+  const { genAI, fileManager } = getGeminiClients();
+  const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+  const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית." }]);
+  updateLiveStatus(tenderId, "ניתוח הושלם");
+  return result.response.text();
 };
 
-// הפקת הצעת מחיר אוטומטית
 export const generateProposal = async (filePath, tenderId) => {
-  try {
-    updateLiveStatus(tenderId, "סורק את כתב הכמויות...");
-    const dataBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdfParse(dataBuffer);
-    
-    updateLiveStatus(tenderId, "מחפש מחירים היסטוריים במאגר...");
-    const priceQueryEmbedding = await getEmbeddings("מחירי יחידה, בטון, שלד, עבודות עפר");
-    const historicalMatches = await vectorStore.search(priceQueryEmbedding, 20);
-    const pricingContext = historicalMatches.map(r => r.text).join('\n---\n');
-
-    updateLiveStatus(tenderId, "ברבור מחשב ומעריך עלויות...");
-    const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const prompt = `בנה הצעת מחיר מקצועית על בסיס המכרז וההיסטוריה: ${pricingContext}. לכל סעיף ציין מחיר ורמת וודאות. ענה בעברית.`;
-
-    const result = await model.generateContent(prompt);
-    updateLiveStatus(tenderId, "הצעה מוכנה!");
-    return result.response.text();
-  } catch (error) { 
-    updateLiveStatus(tenderId, "שגיאה בהפקת הצעה.");
-    throw error; 
-  }
+  updateLiveStatus(tenderId, "מכין הצעה...");
+  const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
+  const matches = await vectorStore.search(queryEmbedding, 10);
+  const context = matches.map(m => m.text).join('\n---\n');
+  const { genAI } = getGeminiClients();
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+  const result = await model.generateContent(`הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית.`);
+  updateLiveStatus(tenderId, "הצעה מוכנה");
+  return result.response.text();
 };
 
-// שאלות ותשובות (צ'אט)
 export const askQuestion = async (projectId, question) => {
-  try {
-    const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
-    const queryEmbedding = await getEmbeddings(question);
-    const semanticResults = await vectorStore.search(queryEmbedding, 5);
-    const context = semanticResults.map(r => r.text).join('\n---\n');
-
-    const prompt = `ענה על השאלה: ${question}. הקשר: ${context}. השתמש ב-[THOUGHT] ו-[CONFIDENCE]. ענה בעברית.`;
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (error) { return "משהו השתבש, נסה שוב."; }
+  const queryEmbedding = await getEmbeddings(question);
+  const matches = await vectorStore.search(queryEmbedding, 5);
+  const context = matches.map(m => m.text).join('\n---\n');
+  const { genAI } = getGeminiClients();
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית.`);
+  return result.response.text();
 };
 
-// ניתוח קבלות OCR
 export const analyzeReceipt = async (filePath, mimeType) => {
-  try {
-    const { fileManager, genAI } = getGeminiClients();
-    const uploadResponse = await fileManager.uploadFile(filePath, { mimeType, displayName: "Receipt" });
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `חלץ נתוני קבלה ל-JSON: סכום, ספק, תאריך.`;
-    const result = await model.generateContent([{ fileData: { mimeType: uploadResponse.file.mimeType, fileUri: uploadResponse.file.uri } }, { text: prompt }]);
-    let text = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(text);
-  } catch (e) { return null; }
+  const { fileManager, genAI } = getGeminiClients();
+  const upload = await fileManager.uploadFile(filePath, { mimeType, displayName: "Receipt" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "חלץ נתוני קבלה ל-JSON." }]);
+  return JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
 };

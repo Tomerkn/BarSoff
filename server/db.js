@@ -2,16 +2,18 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-// נתיב אבסולוטי למסד הנתונים כדי למנוע בעיות בענן
-const DB_DIR = path.join(process.cwd(), 'server', 'data');
+// נתיב למסד הנתונים - משתמשים ב-/tmp כשטח עבודה מהיר
+const DB_DIR = '/tmp/barsuf_data';
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
 const dbPath = path.join(DB_DIR, 'barsuf.db');
 const db = new Database(dbPath);
 
+// הגדרות ביצועים של SQLite
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
 
-// יצירת טבלאות אם הן לא קיימות
+// יצירת מבנה הנתונים המלא של בארסוף
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,8 +39,7 @@ db.exec(`
     amount REAL,
     date TEXT,
     description TEXT,
-    FOREIGN KEY(project_id) REFERENCES projects(id),
-    FOREIGN KEY(budget_id) REFERENCES budgets(id)
+    FOREIGN KEY(project_id) REFERENCES projects(id)
   );
 
   CREATE TABLE IF NOT EXISTS files (
@@ -46,8 +47,7 @@ db.exec(`
     project_id INTEGER,
     filename TEXT,
     original_name TEXT,
-    upload_date TEXT,
-    FOREIGN KEY(project_id) REFERENCES projects(id)
+    upload_date TEXT
   );
 
   CREATE TABLE IF NOT EXISTS tenders (
@@ -60,15 +60,32 @@ db.exec(`
     proposal TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS contractors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    specialization TEXT,
+    phone TEXT,
+    email TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS incomes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER,
     amount REAL,
     date TEXT,
-    description TEXT,
-    FOREIGN KEY(project_id) REFERENCES projects(id)
+    description TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER,
+    supplier_name TEXT,
+    item_description TEXT,
+    amount REAL,
+    order_date TEXT,
+    status TEXT
   );
 `);
 
-console.log('Database initialized at:', dbPath);
+console.log('✅ Database Ready at:', dbPath);
 export default db;

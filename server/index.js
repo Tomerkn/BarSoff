@@ -12,8 +12,8 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const root = process.cwd();
 
-// תיקיות העלאה
-const UPLOADS_DIR = path.join(root, 'server', 'data', 'uploads');
+// שימוש ב-/tmp לכתיבה בענן (Cloud Run)
+const UPLOADS_DIR = '/tmp/barsuf_data/uploads';
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -42,6 +42,42 @@ app.get('/api/projects/:id', (req, res) => {
   res.json(project);
 });
 
+app.get('/api/projects/:id/analytics', (req, res) => {
+  try {
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const stats = db.prepare(`
+      SELECT 
+        (SELECT IFNULL(SUM(total_amount), 0) FROM budgets WHERE project_id = ?) as totalBudget,
+        (SELECT IFNULL(SUM(amount), 0) FROM expenses WHERE project_id = ?) as actualExecution,
+        (SELECT IFNULL(SUM(amount), 0) FROM incomes WHERE project_id = ?) as totalIncomes
+    `).get(req.params.id, req.params.id, req.params.id);
+
+    const breakdown = db.prepare(`
+      SELECT 
+        b.id, b.category, b.total_amount as budget,
+        IFNULL((SELECT SUM(amount) FROM expenses WHERE budget_id = b.id), 0) as actual
+      FROM budgets b
+      WHERE b.project_id = ?
+    `).all(req.params.id);
+
+    const profitLoss = stats.totalIncomes - stats.actualExecution;
+    const utilization = stats.totalBudget > 0 ? (stats.actualExecution / stats.totalBudget) * 100 : 0;
+
+    res.json({
+      project,
+      ...stats,
+      breakdown,
+      profitLoss,
+      utilization,
+      variance: stats.actualExecution - stats.totalBudget
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch project analytics' });
+  }
+});
+
 app.get('/api/tenders', (req, res) => {
   const tenders = db.prepare('SELECT * FROM tenders ORDER BY upload_date DESC').all();
   res.json(tenders);
@@ -61,27 +97,6 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
   res.status(201).json({ id: tenderId });
 });
 
-// התאמה לכתובת שהאתר מחפש
-app.post('/api/analyze-tender', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).send('No file uploaded');
-  const insert = db.prepare('INSERT INTO tenders (name, filename, upload_date, status) VALUES (?, ?, ?, ?)');
-  const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
-  const tenderId = info.lastInsertRowid;
-  
-  analyzeTender(req.file.path, tenderId).then(analysis => {
-    db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
-    ingestDocument('global', req.file.path);
-  }).catch(e => db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId));
-
-  res.status(201).json({ id: tenderId });
-});
-
-app.post('/api/global-knowledge', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).send('No file uploaded');
-  await ingestDocument('global', req.file.path);
-  res.json({ success: true });
-});
-
 app.post('/api/tenders/:id/proposal', async (req, res) => {
   const tender = db.prepare('SELECT * FROM tenders WHERE id = ?').get(req.params.id);
   generateProposal(path.join(UPLOADS_DIR, tender.filename), req.params.id).then(proposal => {
@@ -98,15 +113,24 @@ app.post('/api/projects/:id/chat', async (req, res) => {
 });
 
 app.get('/api/analytics/global', (req, res) => {
-  const data = db.prepare(`
-    SELECT 
-      (SELECT SUM(total_amount) FROM budgets) as totalBudget,
-      (SELECT SUM(amount) FROM expenses) as totalExpenses,
-      (SELECT SUM(amount) FROM incomes) as totalIncomes,
-      (SELECT COUNT(*) FROM projects) as totalProjects,
-      (SELECT COUNT(*) FROM projects WHERE status = 'תקין') as activeProjects
-  `).get();
-  res.json(data);
+  try {
+    const data = db.prepare(`
+      SELECT 
+        (SELECT IFNULL(SUM(total_amount), 0) FROM budgets) as totalBudget,
+        (SELECT IFNULL(SUM(amount), 0) FROM expenses) as totalExpenses,
+        (SELECT IFNULL(SUM(amount), 0) FROM incomes) as totalIncomes,
+        (SELECT COUNT(*) FROM projects) as totalProjects,
+        (SELECT COUNT(*) FROM projects WHERE status = 'תקין') as activeProjects,
+        (SELECT COUNT(*) FROM tenders WHERE status != 'נותח') as openTenders,
+        0 as openWarrantyTickets
+    `).get();
+    res.json({
+      ...data,
+      openWarrantyTickets: data.openWarrantyTickets || 0
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch global analytics' });
+  }
 });
 
 // Wildcard routing for SPA
@@ -116,7 +140,7 @@ app.get('*', (req, res, next) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(404).send('Frontend not found. Please build it first.');
+    res.status(404).send('Frontend build not found.');
   }
 });
 
