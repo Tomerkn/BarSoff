@@ -252,7 +252,7 @@ app.get('/api/analytics/global', (req, res) => {
 });
 
 // Wildcard routing for SPA
-app.get('*', (req, res, next) => {
+app.get('(.*)', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
