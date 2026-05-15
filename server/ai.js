@@ -1,7 +1,7 @@
 import fs from 'fs'; // כלי לקריאה וכתיבה של קבצים
 import path from 'path'; // כלי לניהול נתיבי תיקיות
-import { GoogleGenerativeAI } from '@google/generative-ai'; // החיבור למוח של גוגל (Gemini)
-import { GoogleAIFileManager } from '@google-cloud/generative-ai/server'; // ניהול קבצים מול גוגל
+import { GoogleGenerativeAI } from '@google/generative-ai'; // החיבור הישיר למוח של גוגל (Gemini)
+import { GoogleAIFileManager } from '@google/generative-ai/server'; // ניהול קבצים מול גוגל
 import Anthropic from '@anthropic-ai/sdk'; // הגיבוי שלנו - Claude
 import db from './db.js'; // חיבור למסד הנתונים של בארסוף
 import pdf from 'pdf-parse'; // קריאת טקסט מקבצי PDF
