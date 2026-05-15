@@ -76,7 +76,7 @@ export const analyzeTender = async (filePath, tenderId) => {
   const { genAI, fileManager } = getGeminiClients();
   const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-  const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית." }]);
+  const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. בסוף הניתוח, הוסף שורה: 'מדד ביטחון ניתוח: XX%' על בסיס איכות הטקסט במסמך." }]);
   updateLiveStatus(tenderId, "ניתוח הושלם");
   return result.response.text();
 };

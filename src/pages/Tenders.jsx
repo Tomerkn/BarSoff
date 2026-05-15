@@ -12,6 +12,24 @@ export default function Tenders() {
   const [uploading, setUploading] = useState(false); // האם קובץ עולה עכשיו?
   const [selectedTender, setSelectedTender] = useState(null); // איזה מכרז המשתמש בחר לראות כרגע
   const [generating, setGenerating] = useState(false); // האם ברבור מייצר עכשיו הצעת מחיר?
+  const [currentStep, setCurrentStep] = useState(0);
+
+  const loadingSteps = [
+    "ברבור קורא את האותיות הקטנות...",
+    "מזהה תנאי סף ודרישות חובה...",
+    "מחשב לוחות זמנים וקנסות...",
+    "מגבש סיכום מנהלים חכם..."
+  ];
+
+  useEffect(() => {
+    let interval;
+    if (uploading || generating) {
+      interval = setInterval(() => {
+        setCurrentStep(prev => (prev + 1) % loadingSteps.length);
+      }, 2500);
+    }
+    return () => clearInterval(interval);
+  }, [uploading, generating]);
 
   // מנגנון רענון אוטומטי כדי לראות סטטוס חי של ברבור
   useEffect(() => {
@@ -173,7 +191,12 @@ export default function Tenders() {
                     ניתוח מכרז חכם
                   </h3>
                   <div className="prose prose-sm max-w-none text-text-primary bg-blue-50/30 p-4 rounded-xl border border-blue-100 leading-relaxed whitespace-pre-wrap">
-                    {selectedTender.analysis || 'ברבור כרגע סורק את המכרז לעומק, מיד יופיעו הנתונים...'}
+                    {selectedTender.analysis || (
+                      <div className="flex items-center gap-3 text-[var(--color-brand)] font-medium">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        {loadingSteps[currentStep]}
+                      </div>
+                    )}
                   </div>
                 </section>
 
