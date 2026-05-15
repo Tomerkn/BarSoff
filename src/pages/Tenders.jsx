@@ -13,7 +13,18 @@ export default function Tenders() {
   const [selectedTender, setSelectedTender] = useState(null); // איזה מכרז המשתמש בחר לראות כרגע
   const [generating, setGenerating] = useState(false); // האם ברבור מייצר עכשיו הצעת מחיר?
 
-  // כשנכנסים לדף, דבר ראשון מביאים את כל המכרזים מהשרת
+  // מנגנון רענון אוטומטי כדי לראות סטטוס חי של ברבור
+  useEffect(() => {
+    const hasInProgress = tenders.some(t => 
+      t.status !== 'נותח' && t.status !== 'הצעה מוכנה' && t.status !== 'שגיאה'
+    );
+
+    if (hasInProgress) {
+      const interval = setInterval(fetchTenders, 3000); // רענון כל 3 שניות
+      return () => clearInterval(interval);
+    }
+  }, [tenders]);
+
   useEffect(() => {
     fetchTenders();
   }, []);
