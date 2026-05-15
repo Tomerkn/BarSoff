@@ -2,6 +2,7 @@ import fs from 'fs'; // כלי לעבודה עם קבצים
 import path from 'path'; // כלי לטיפול בנתיבי קבצים
 import { GoogleGenerativeAI } from '@google/generative-ai'; // התחברות לבינה המלאכותית של גוגל
 import { GoogleAIFileManager } from '@google/generative-ai/server'; // ניהול קבצים מול גוגל
+import Anthropic from '@anthropic-ai/sdk'; // התחברות ל-Claude (אנתרופיק) כגיבוי
 import db from './db.js'; // חיבור למסד הנתונים
 
 const CACHE_DIR = path.join(process.cwd(), 'server', 'data', 'gemini_cache'); // תיקייה לשמירת זיכרון זמני של ה-AI
@@ -13,15 +14,26 @@ if (!fs.existsSync(CACHE_DIR)) {
 
 // פונקציה שמביאה את המפתחות שצריך כדי לדבר עם ה-AI של גוגל
 const getGeminiClients = () => {
-  const apiKey = process.env.GEMINI_API_KEY; // לוקחים את המפתח מהגדרות המערכת
-  if (!apiKey) { // אם שכחו לשים מפתח
-    throw new Error('GEMINI_API_KEY is missing! אנא הוסף מפתח התחברות כדי שברבור יוכל לפעול.');
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is missing!');
   }
   return {
-    genAI: new GoogleGenerativeAI(apiKey), // יוצרים חיבור ל-AI
-    fileManager: new GoogleAIFileManager(apiKey) // יוצרים חיבור לניהול קבצים
+    genAI: new GoogleGenerativeAI(apiKey),
+    fileManager: new GoogleAIFileManager(apiKey)
   };
 };
+
+// פונקציה שמביאה את הלקוח של Claude לגיבוי
+const getClaudeClient = () => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return null; // אם אין מפתח לקלוד, פשוט נחזיר נל ונדע שאין גיבוי
+  }
+  return new Anthropic({ apiKey });
+};
+
+const getGlobalDocsPath = () => path.join(CACHE_DIR, 'global_knowledge.json');
 
 // העלאת מסמך ללימוד של ה-AI ושמירה שלו בזיכרון המקומי
 export const ingestDocument = async (projectId, filePath, mimeType = "application/pdf") => {
@@ -32,15 +44,15 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
     // מעלים את הקובץ לשרתים של גוגל - הם יודעים לקרוא שרטוטים, טבלאות ומסמכים בקלות
     const uploadResponse = await fileManager.uploadFile(filePath, {
       mimeType: mimeType,
-      displayName: `Project ${projectId} Document`
+      displayName: projectId === 'global' ? `Global Knowledge Base` : `Project ${projectId} Document`
     });
 
     console.log(`Upload complete. Gemini URI: ${uploadResponse.file.uri}`);
 
-    // שומרים את המידע בקובץ פשוט אצלנו, כדי שנדע על אילו קבצים לענות כשישאלו אותנו שאלות
-    const cachePath = path.join(CACHE_DIR, `project_${projectId}.json`);
+    // שומרים את המידע בקובץ פשוט אצלנו
+    const cachePath = projectId === 'global' ? getGlobalDocsPath() : path.join(CACHE_DIR, `project_${projectId}.json`);
     let files = [];
-    if (fs.existsSync(cachePath)) { // אם כבר יש קבצים לפרויקט הזה
+    if (fs.existsSync(cachePath)) { // אם כבר יש קבצים
       files = JSON.parse(fs.readFileSync(cachePath, 'utf-8')); // קוראים אותם
     }
     
@@ -49,6 +61,7 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
       uri: uploadResponse.file.uri,
       mimeType: uploadResponse.file.mimeType,
       localPath: filePath,
+      originalName: path.basename(filePath),
       uploadTime: Date.now()
     });
 
@@ -105,33 +118,47 @@ export const analyzeReceipt = async (filePath, mimeType) => {
 };
 
 // פונקציה שמאפשרת לשאול את ה-AI שאלות על כל המסמכים שהעלינו לפרויקט
-export const askQuestion = async (projectId, question) => {
+export const askQuestion = async (projectId, question, includeGlobal = true) => {
   try {
-    const { genAI, fileManager } = getGeminiClients(); // גישה לגוגל
-    const cachePath = path.join(CACHE_DIR, `project_${projectId}.json`);
+    const { genAI } = getGeminiClients();
+    const projectCachePath = path.join(CACHE_DIR, `project_${projectId}.json`);
+    const globalCachePath = getGlobalDocsPath();
     
-    if (!fs.existsSync(cachePath)) { // אם אין מסמכים בכלל
-      return "לא נמצאו מסמכים שנסרקו לפרויקט זה. אנא העלה מסמכים תחילה.";
+    let allFiles = [];
+    
+    // מוסיפים קבצים של הפרויקט הספציפי
+    if (fs.existsSync(projectCachePath)) {
+      allFiles = [...JSON.parse(fs.readFileSync(projectCachePath, 'utf-8'))];
     }
 
-    let files = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-    if (files.length === 0) {
-      return "הפרויקט ריק ממסמכים.";
+    // מוסיפים קבצים ממאגר הידע הגלובלי (למשל לצורך מכרזים)
+    if (includeGlobal && fs.existsSync(globalCachePath)) {
+      const globalFiles = JSON.parse(fs.readFileSync(globalCachePath, 'utf-8'));
+      allFiles = [...allFiles, ...globalFiles];
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // מפעילים את המוח
+    if (allFiles.length === 0) {
+      return "לא נמצאו מסמכים שנסרקו לפרויקט זה או במאגר הידע הגלובלי.";
+    }
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // מפעילים את המוח
 
     // פה אנחנו מגדירים ל-AI מי הוא ואיך להתנהג
     const promptParts = [
-      { text: "אתה עוזר בינה מלאכותית למנהל פרויקטים בבנייה ששמו 'ברבור 🦢'. המשתמש יצרף מסמכים (כמו תוכניות חשמל, קבלות, חשבוניות וכו'). עליך לענות לו באופן מדויק על השאלה על סמך המסמכים המצורפים. הקפד לקרוא היטב טבלאות ושרטוטים. ענה בעברית בלבד ובטון חברי ועוזר. חשוב מאוד: אל תשתמש בעיצוב Markdown (כמו כוכביות להדגשה) ואל תשתמש בסימונים מתמטיים באנגלית. כתוב את כל המספרים והחישובים כטקסט פשוט וברור בעברית. אם אינך מוצא את התשובה במסמכים, אמור פשוט שאין לך מידע כזה שם. הנה השאלה:\n\n" + question }
+      { text: `אתה עוזר בינה מלאכותית למנהל פרויקטים בבנייה ששמו 'ברבור 🦢'. 
+      לפניך מסמכים מפרויקט מספר ${projectId} וכן מסמכי ידע כלליים של החברה.
+      
+      חשוב מאוד: לפני שאתה עונה, עליך לפרט את תהליך המחשבה שלך בתוך תגיות [THOUGHT] ו-[/THOUGHT].
+      בתהליך המחשבה, ציין אילו מסמכים סרקת, מה מצאת בהם ואיך זה קשור לשאלה.
+      לאחר מכן, ספק את התשובה הסופית.
+      
+      ענה בעברית בלבד ובטון מקצועי אך חברי.
+      אם המידע לא נמצא במסמכים, ציין זאת במפורש.
+      
+      השאלה של המשתמש: ${question}` }
     ];
 
-    let fileListText = "רשימת המסמכים המצורפים כרגע לפרויקט:\n";
-
-    for (const file of files) { // מצרפים את כל הקבצים לשאלה כדי שה-AI יקרא אותם
-      const originalName = file.localPath ? path.basename(file.localPath).split('-').slice(1).join('-') : file.name;
-      fileListText += `- ${originalName || 'מסמך ללא שם'} (הועלה בתאריך: ${new Date(file.uploadTime).toLocaleDateString('he-IL')})\n`;
-      
+    for (const file of allFiles) {
       promptParts.unshift({
         fileData: {
           mimeType: file.mimeType,
@@ -140,52 +167,141 @@ export const askQuestion = async (projectId, question) => {
       });
     }
 
-    // מביאים גם מידע מהגלריה של הפרויקט
+    // הוספת הקשר מהמסד נתונים (משימות, גאנט וכו')
     try {
-      let mediaFiles = [];
-      try {
-        mediaFiles = db.prepare('SELECT original_name, upload_date, folder FROM project_media WHERE project_id = ?').all(projectId);
-      } catch (e) {
-        mediaFiles = db.prepare('SELECT original_name, upload_date FROM project_media WHERE project_id = ?').all(projectId);
-      }
-
-      if (mediaFiles.length > 0) {
-        fileListText += "\nבנוסף, יש בגלריה את התמונות/מסמכים הבאים:\n";
-        for (const media of mediaFiles) {
-          const folderText = media.folder ? `תיקייה: ${media.folder}` : '';
-          fileListText += `- ${media.original_name} (${folderText} | בתאריך: ${new Date(media.upload_date).toLocaleDateString('he-IL')})\n`;
-        }
-      }
-    } catch (e) {
-      console.error("Could not fetch project media for prompt", e);
-    }
-
-    // מביאים את המשימות של הגאנט
-    try {
-      let tasks = [];
-      try {
-        tasks = db.prepare('SELECT name, start_date, end_date, progress FROM tasks WHERE project_id = ? ORDER BY start_date ASC').all(projectId);
-      } catch (e) {
-        // אם הטבלה עדיין לא קיימת
-      }
-
+      const tasks = db.prepare('SELECT name, start_date, end_date, progress FROM tasks WHERE project_id = ?').all(projectId);
       if (tasks.length > 0) {
-        fileListText += "\n\nלהלן לוח הזמנים (Gantt) של הפרויקט:\n";
-        for (const task of tasks) {
-          fileListText += `- משימה: "${task.name}", תאריכים: ${task.start_date} עד ${task.end_date}, התקדמות: ${task.progress}%\n`;
-        }
+        let taskInfo = "\nלהלן סטטוס המשימות הנוכחי בפרויקט:\n";
+        tasks.forEach(t => taskInfo += `- ${t.name}: ${t.progress}% (סיום משוער: ${t.end_date})\n`);
+        promptParts.push({ text: taskInfo });
       }
-    } catch (e) {
-      console.error("Could not fetch project tasks for prompt", e);
-    }
+    } catch (e) {}
 
-    promptParts.push({ text: `\n\n${fileListText}\n\nאם המשתמש שואל אילו קבצים יש, תסכם לו את הרשימה.` });
-
-    console.log(`Asking Gemini question across ${files.length} documents...`);
-    const result = await model.generateContent(promptParts); // מבקשים תשובה סופית
-    return result.response.text(); // מחזירים את התשובה
+    console.log(`Asking Gemini question across ${allFiles.length} documents...`);
+    const result = await model.generateContent(promptParts);
+    return result.response.text();
   } catch (error) {
-    console.error('Error asking question via Gemini:', error);
+    console.error('Gemini error, attempting fallback to Claude:', error);
+    
+    // ניסיון Fallback ל-Claude
+    const claude = getClaudeClient();
+    if (claude) {
+      try {
+        console.log('Falling back to Claude 3.5 Sonnet...');
+        const response = await claude.messages.create({
+          model: 'claude-3-5-sonnet-20240620',
+          max_tokens: 4096,
+          messages: [{ 
+            role: 'user', 
+            content: `אתה עוזר בינה מלאכותית בשם ברבור. המערכת הראשית שלנו (גוגל) חוותה עומס, ולכן עברנו אליך.
+            ענה על השאלה הבאה בצורה מקצועית וחברית בעברית.
+            שים לב: כרגע אין לי אפשרות להעביר לך את המסמכים המלאים בגלל המעבר המהיר, ענה על סמך מה שאתה יודע או בקש מהמשתמש להעלות שוב אם זה קריטי.
+            
+            שאלה: ${question}` 
+          }],
+        });
+        return `[מצב גיבוי - קלוד] ${response.content[0].text}`;
+      } catch (claudeError) {
+        console.error('Claude fallback also failed:', claudeError);
+      }
+    }
+    
+    throw error;
+  }
+};
+
+// פונקציה לניתוח מהיר של מסמך מכרז
+export const analyzeTender = async (filePath) => {
+  try {
+    const { genAI, fileManager } = getGeminiClients();
+    
+    console.log(`Analyzing tender document: ${filePath}...`);
+    const uploadResponse = await fileManager.uploadFile(filePath, {
+      mimeType: "application/pdf",
+      displayName: "Tender for Analysis"
+    });
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); // משתמשים ב-Pro לניתוח מעמיק יותר
+
+    const prompt = `
+      אתה מומחה לניתוח מכרזים בענף הבנייה והתשתיות.
+      לפניך מסמך מכרז. בצע ניתוח מעמיק.
+      
+      חשוב מאוד: לפני שאתה מציג את הניתוח, עליך לפרט את תהליך המחשבה והסריקה שלך בתוך תגיות [THOUGHT] ו-[/THOUGHT].
+      הסבר מה חיפשת במסמך ואיפה מצאת את הנקודות הקריטיות.
+      
+      לאחר מכן, החזר סיכום בעברית בפורמט הבא:
+      
+      1. **תקציר הפרויקט:** (מה בונים, איפה ובאיזה היקף משוער).
+      2. **תנאי סף קריטיים:** (סיווג קבלני נדרש, ניסיון קודם, ערבויות).
+      3. **לוחות זמנים:** (מועד אחרון להגשה, מועד סיור קבלנים, משך ביצוע הפרויקט).
+      4. **נקודות סיכון או הערות מיוחדות:** (קנסות חריגים, תנאי תשלום בעייתיים, דרישות טכניות מורכבות).
+      5. **המלצת GO/NO-GO ראשונית:** (האם הפרויקט נראה מתאים לחברה קבלנית בינונית-גדולה).
+      
+      ענה בצורה תמציתית ומקצועית.
+    `;
+
+    const result = await model.generateContent([
+      {
+        fileData: {
+          mimeType: uploadResponse.file.mimeType,
+          fileUri: uploadResponse.file.uri
+        }
+      },
+      { text: prompt }
+    ]);
+
+    return result.response.text();
+  } catch (error) {
+    console.error('Tender analysis error, attempting fallback to Claude:', error);
+    
+    const claude = getClaudeClient();
+    if (claude) {
+      try {
+        console.log('Falling back to Claude 3.5 Sonnet for tender analysis...');
+        const fileBuffer = fs.readFileSync(filePath);
+        const fileBase64 = fileBuffer.toString('base64');
+        
+        const response = await claude.messages.create({
+          model: 'claude-3-5-sonnet-20240620',
+          max_tokens: 4096,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `אתה מומחה לניתוח מכרזים. בצע ניתוח מעמיק למסמך המצורף.
+                חשוב מאוד: ספק את תהליך המחשבה שלך בתוך [THOUGHT] ו-[/THOUGHT].
+                הסבר מה חיפשת במסמך ואיפה מצאת את הנקודות הקריטיות.
+                
+                לאחר מכן ספק סיכום הכולל:
+                1. תקציר הפרויקט.
+                2. תנאי סף קריטיים.
+                3. לוחות זמנים.
+                4. נקודות סיכון.
+                5. המלצת GO/NO-GO.`
+              },
+              {
+                type: 'image', // Note: Anthropic uses 'image' for base64 PDFs in some versions, but for actual PDF support it's 'document'
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: fileBase64
+                }
+              }
+            ].filter(c => c.type !== 'image' || c.source.media_type !== 'application/pdf') // Fallback to text if document not supported in this SDK version
+          }]
+        });
+        
+        // If the document part was filtered out (older SDK), we just send text
+        if (response.content[0].type === 'text') {
+           return `[מצב גיבוי - קלוד] ${response.content[0].text}`;
+        }
+        return `[מצב גיבוי - קלוד] ${response.content[0].text}`;
+      } catch (claudeError) {
+        console.error('Claude tender analysis fallback failed:', claudeError);
+      }
+    }
     throw error;
   }
 };

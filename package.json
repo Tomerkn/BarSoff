@@ -13,6 +13,7 @@
     "auto-deploy": "while true; do echo 'Checking for updates...'; git pull origin main | grep -q 'Already up to date.' || (echo 'New version found! Deploying...' && gcloud run deploy barsuf --source . --region us-central1 --allow-unauthenticated); sleep 600; done"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@google-cloud/storage": "^5.18.3",
     "@google/generative-ai": "^0.24.1",
     "@tailwindcss/vite": "^4.2.4",

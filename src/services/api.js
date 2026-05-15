@@ -115,5 +115,27 @@ export const api = { // יצירת השליח שמדבר עם השרת
     });
     if (!response.ok) throw new Error(`Failed to delete ${resourceType}`); // אם נכשל
     return response.json(); // מחזירים אישור הצלחה
+  },
+  
+  // --- בינה מלאכותית ומכרזים ---
+  analyzeTender: async (file) => { // ניתוח מכרז חכם
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE_URL}/analyze-tender`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('נכשל בניתוח המכרז');
+    return response.json();
+  },
+  uploadGlobalKnowledge: async (file) => { // העלאת ידע ארגוני
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE_URL}/global-knowledge`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('נכשל בהעלאת ידע ארגוני');
+    return response.json();
   }
 };

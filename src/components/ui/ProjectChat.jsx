@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'; // מביאים את הכלים של ריאקט
 import { api } from '../../services/api'; // השליח שמדבר עם השרת
-import { Bot, Send, Upload, FileText, Loader2, Paperclip, X } from 'lucide-react'; // אייקונים יפים
+import { Bot, Send, Upload, FileText, Loader2, Paperclip, X, ShieldCheck, HelpCircle } from 'lucide-react'; // אייקונים יפים
 
 export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבור
   const [messages, setMessages] = useState([ // הודעות בצ'אט
@@ -13,6 +13,7 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
   const [files, setFiles] = useState([]); // רשימת הקבצים שכבר נסרקו
   const messagesEndRef = useRef(null); // התייחסות לסוף הצ'אט כדי לגלול למטה
   const fileInputRef = useRef(null); // התייחסות לשדה העלאת הקבצים
+  const tenderInputRef = useRef(null); // התייחסות לשדה ניתוח מכרז
 
   const fetchFiles = async () => { // מביא את רשימת הקבצים של הפרויקט מהשרת
     try {
@@ -35,6 +36,44 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
   useEffect(() => { // גלילה אוטומטית לסוף הצ'אט כשיש הודעה חדשה
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleTenderAnalysis = async (e) => { // ניתוח מכרז חכם
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      alert('נא להעלות קבצי PDF לניתוח מכרז.');
+      return;
+    }
+
+    setLoading(true);
+    const analysisMsgId = Date.now();
+    setMessages(prev => [...prev, { 
+      id: analysisMsgId, 
+      type: 'system', 
+      text: `מנתח את המכרז "${file.name}"... זה עשוי לקחת כמה שניות (סריקת תנאי סף, לו"ז וסיכונים).` 
+    }]);
+
+    try {
+      const data = await api.analyzeTender(file);
+      setMessages(prev => [
+        ...prev.filter(msg => msg.id !== analysisMsgId),
+        { 
+          id: Date.now(), 
+          type: 'bot', 
+          text: `ניתוח המכרז הושלם עבור: ${file.name}\n\n${data.analysis}`,
+          isTender: true
+        }
+      ]);
+    } catch (error) {
+      console.error('Error analyzing tender:', error);
+      setMessages(prev => prev.filter(msg => msg.id !== analysisMsgId));
+      alert(`שגיאה בניתוח המכרז: ${error.message}`);
+    } finally {
+      setLoading(false);
+      if (tenderInputRef.current) tenderInputRef.current.value = '';
+    }
+  };
 
   const handleFileUpload = async (e) => { // טיפול בהעלאת קובץ PDF
     const file = e.target.files[0];
@@ -198,7 +237,21 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
                   <span className="text-xs font-bold">ברבור</span>
                 </div>
               )}
-              <p className="whitespace-pre-wrap leading-relaxed text-sm">{msg.text}</p>
+              
+              {/* הצגת תהליך מחשבה אם קיים */}
+              {msg.type === 'bot' && msg.text.includes('[THOUGHT]') && (
+                <div className="mb-3 p-2 bg-slate-50 border-r-4 border-slate-300 text-slate-600 text-xs italic rounded">
+                  <div className="font-bold mb-1 flex items-center gap-1">
+                    <HelpCircle className="w-3 h-3" />
+                    תהליך מחשבה:
+                  </div>
+                  {msg.text.match(/\[THOUGHT\](.*?)\[\/THOUGHT\]/s)?.[1] || ''}
+                </div>
+              )}
+
+              <p className="whitespace-pre-wrap leading-relaxed text-sm">
+                {msg.type === 'bot' ? msg.text.replace(/\[THOUGHT\].*?\[\/THOUGHT\]/s, '').trim() : msg.text}
+              </p>
             </div>
           </div>
         ))}
@@ -232,6 +285,25 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
             title="העלאת מסמך PDF"
           >
             {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
+          </button>
+
+          <input 
+            type="file" 
+            accept=".pdf"
+            className="hidden" 
+            ref={tenderInputRef}
+            onChange={handleTenderAnalysis}
+            disabled={loading}
+          />
+          <button 
+            type="button"
+            onClick={() => tenderInputRef.current?.click()}
+            disabled={loading}
+            className="p-3 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors disabled:opacity-50 shrink-0 flex items-center gap-1"
+            title="ניתוח מכרז חכם"
+          >
+            <ShieldCheck className="w-5 h-5" />
+            <span className="text-[10px] font-bold hidden sm:block">ניתוח מכרז</span>
           </button>
           <div className="relative flex-1">
             <textarea

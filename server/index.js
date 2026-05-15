@@ -6,7 +6,7 @@ import fs from 'fs'; // כלי לעבודה עם מערכת הקבצים של ה
 import { Storage } from '@google-cloud/storage'; // התחברות לאחסון הענן של גוגל
 import db from './db.js'; // מביאים את החיבור למסד הנתונים שלנו
 import './seed.js'; // מוודאים שיש נתונים ראשוניים בבסיס הנתונים
-import { ingestDocument, askQuestion, analyzeReceipt } from './ai.js'; // מביאים את המוח של הבינה המלאכותית
+import { ingestDocument, askQuestion, analyzeReceipt, analyzeTender } from './ai.js'; // מביאים את המוח של הבינה המלאכותית
 
 const app = express(); // יוצרים את האפליקציה של השרת
 const PORT = process.env.PORT || 3001; // קובעים על איזה פורט השרת ירוץ
@@ -376,6 +376,29 @@ app.post('/api/projects/:id/files', upload.single('file'), async (req, res) => {
     }
     const errorMessage = error.message || 'שגיאה בעיבוד הקובץ מול ה-AI.';
     res.status(500).json({ error: errorMessage });
+  }
+});
+
+// --- מאגר ידע גלובלי (למכרזים) ---
+app.post('/api/global-knowledge', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    await ingestDocument('global', req.file.path);
+    res.json({ success: true, filename: req.file.originalname });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- ניתוח מכרז חכם ---
+app.post('/api/analyze-tender', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const analysis = await analyzeTender(req.file.path);
+    res.json({ analysis });
+  } catch (error) {
+    console.error('Tender analysis error:', error);
+    res.status(500).json({ error: 'נכשלנו בניתוח המכרז. וודא שהקובץ הוא PDF תקין ונסה שוב.' });
   }
 });
 
