@@ -24,18 +24,10 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Authorize Docker
-        run: gcloud auth configure-docker europe-west1-docker.pkg.dev
-
-      - name: Build and Push Container
-        run: |-
-          docker build -t europe-west1-docker.pkg.dev/project-e7b25b42-8e43-4df1-8ce/cloud-run-source-deploy/barsuf:${{ github.sha }} .
-          docker push europe-west1-docker.pkg.dev/project-e7b25b42-8e43-4df1-8ce/cloud-run-source-deploy/barsuf:${{ github.sha }}
-
       - name: Deploy to Cloud Run
         run: |-
           gcloud run deploy barsuf \
-            --image europe-west1-docker.pkg.dev/project-e7b25b42-8e43-4df1-8ce/cloud-run-source-deploy/barsuf:${{ github.sha }} \
+            --source . \
             --region europe-west1 \
             --platform managed \
             --allow-unauthenticated
