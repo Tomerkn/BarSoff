@@ -4,6 +4,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai'; // התחברות ל
 import { GoogleAIFileManager } from '@google/generative-ai/server'; // ניהול קבצים מול גוגל
 import Anthropic from '@anthropic-ai/sdk'; // התחברות ל-Claude (אנתרופיק) כגיבוי
 import db from './db.js'; // חיבור למסד הנתונים
+import pdf from 'pdf-parse'; // קריאת טקסט מ-PDF
+import { VectorStorage } from 'vector-storage'; // מסד נתונים וקטורי מקומי
 
 const CACHE_DIR = path.join(process.cwd(), 'server', 'data', 'gemini_cache'); // תיקייה לשמירת זיכרון זמני של ה-AI
 
@@ -34,6 +36,24 @@ const getClaudeClient = () => {
 };
 
 const getGlobalDocsPath = () => path.join(CACHE_DIR, 'global_knowledge.json');
+
+// הגדרת מסד הנתונים הוקטורי (לחיפוש סמנטי)
+const vectorStore = new VectorStorage({
+  storagePath: path.join(CACHE_DIR, 'vector_db.json')
+});
+
+// פונקציה ליצירת וקטורים (Embeddings) באמצעות גוגל
+async function getEmbeddings(text) {
+  try {
+    const { genAI } = getGeminiClients();
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    const result = await model.embedContent(text);
+    return result.embedding.values;
+  } catch (error) {
+    console.error('Embedding error:', error);
+    return null;
+  }
+}
 
 // העלאת מסמך ללימוד של ה-AI ושמירה שלו בזיכרון המקומי
 export const ingestDocument = async (projectId, filePath, mimeType = "application/pdf") => {
@@ -66,6 +86,30 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
     });
 
     fs.writeFileSync(cachePath, JSON.stringify(files, null, 2)); // שומרים את הרשימה המעודכנת
+
+    // --- חיפוש סמנטי: חילוץ טקסט ושמירה ב-Vector DB ---
+    if (mimeType === 'application/pdf' && fs.existsSync(filePath)) {
+      try {
+        console.log(`Extracting text from ${filePath} for semantic index...`);
+        const dataBuffer = fs.readFileSync(filePath);
+        const data = await pdf(dataBuffer);
+        const text = data.text;
+        
+        // פירוק לחתיכות (Chunks) של 1000 תווים
+        const chunks = text.match(/[\s\S]{1,1000}/g) || [];
+        console.log(`Indexing ${chunks.length} chunks...`);
+        
+        for (const chunk of chunks) {
+          const embedding = await getEmbeddings(chunk);
+          if (embedding) {
+            await vectorStore.addText(chunk, embedding, { projectId, filePath });
+          }
+        }
+      } catch (err) {
+        console.error('Semantic indexing error (non-fatal):', err);
+      }
+    }
+
     return true;
   } catch (error) {
     console.error('Error ingesting document via Gemini:', error);
@@ -143,10 +187,27 @@ export const askQuestion = async (projectId, question, includeGlobal = true) => 
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // מפעילים את המוח
 
+    // 1. חיפוש סמנטי ב-Vector DB כדי למצוא פסקאות רלוונטיות
+    let semanticContext = "";
+    try {
+      console.log(`Searching semantic matches for: ${question}`);
+      const queryEmbedding = await getEmbeddings(question);
+      if (queryEmbedding) {
+        const semanticResults = await vectorStore.search(queryEmbedding, 5); // מביאים את 5 התוצאות הכי קרובות
+        semanticContext = semanticResults.map(r => r.text).join('\n---\n');
+      }
+    } catch (err) {
+      console.error('Semantic search error:', err);
+    }
+
     // פה אנחנו מגדירים ל-AI מי הוא ואיך להתנהג
     const promptParts = [
       { text: `השם שלך הוא 'ברבור 🦢', ואתה עוזר בינה מלאכותית חכם ומקצועי לניהול פרויקטים בבנייה.
-      לפניך מסמכים מפרויקט מספר ${projectId} וכן מסמכי ידע כלליים של החברה.
+      
+      מידע רלוונטי שנמצא בחיפוש סמנטי (השתמש בזה כדי להבין הקשרים כמו בטון/מלט):
+      ${semanticContext}
+      
+      לפניך גם המסמכים המלאים מהפרויקט.
       
       חשוב מאוד: 
       1. לפני שאתה עונה, עליך לפרט את תהליך המחשבה שלך בתוך תגיות [THOUGHT] ו-[/THOUGHT].
