@@ -271,8 +271,35 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
               )}
 
               <p className="whitespace-pre-wrap leading-relaxed text-sm">
-                {msg.type === 'bot' ? msg.text.replace(/\[THOUGHT\].*?\[\/THOUGHT\]/s, '').trim() : msg.text}
+                {msg.type === 'bot' 
+                  ? msg.text.replace(/\[THOUGHT\].*?\[\/THOUGHT\]/s, '').replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim() 
+                  : msg.text}
               </p>
+
+              {/* הצגת רמת וודאות */}
+              {msg.type === 'bot' && msg.text.includes('[CONFIDENCE]') && (
+                <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/50 pt-2">
+                  <span className="text-[10px] text-text-muted">רמת וודאות:</span>
+                  {(() => {
+                    const confidence = parseInt(msg.text.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                    let colorClass = 'bg-red-100 text-red-600';
+                    let label = 'נדרשת בדיקה';
+                    if (confidence >= 85) {
+                      colorClass = 'bg-emerald-100 text-emerald-600';
+                      label = 'וודאות גבוהה';
+                    } else if (confidence >= 60) {
+                      colorClass = 'bg-amber-100 text-amber-600';
+                      label = 'וודאות בינונית';
+                    }
+                    return (
+                      <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${colorClass} flex items-center gap-1`}>
+                        <div className={`w-1 h-1 rounded-full ${colorClass.split(' ')[1].replace('text', 'bg')}`} />
+                        {confidence}% - {label}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           </div>
         ))}
