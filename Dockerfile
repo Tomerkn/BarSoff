@@ -2,12 +2,10 @@
 FROM node:20-slim AS frontend-build
 WORKDIR /app
 
-# Install build tools for native modules
+# Install full build-essential for native modules
 RUN apt-get update && apt-get install -y \
     python3 \
-    make \
-    g++ \
-    gcc \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -20,12 +18,10 @@ RUN npm run build
 FROM node:20-slim
 WORKDIR /app
 
-# Install runtime dependencies for better-sqlite3 and others
+# Runtime dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
-    make \
-    g++ \
-    gcc \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
