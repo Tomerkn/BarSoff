@@ -9,7 +9,8 @@
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "auto-deploy": "while true; do echo 'Checking for updates...'; git pull origin main | grep -q 'Already up to date.' || (echo 'New version found! Deploying...' && gcloud run deploy barsuf --source . --region us-central1 --allow-unauthenticated); sleep 600; done"
   },
   "dependencies": {
     "@google-cloud/storage": "^5.18.3",
