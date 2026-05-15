@@ -1,13 +1,36 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { Storage } from '@google-cloud/storage';
 
 // נתיב למסד הנתונים - משתמשים ב-/tmp כשטח עבודה מהיר
 const DB_DIR = '/tmp/barsuf_data';
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
 const dbPath = path.join(DB_DIR, 'barsuf.db');
+
+// סנכרון מהענן - מורידים את מסד הנתונים לפני הפעלה
+const storage = new Storage();
+const BUCKET_NAME = 'barsuf-media-storage-1777314059';
+try {
+  const bucket = storage.bucket(BUCKET_NAME);
+  const file = bucket.file('barsuf.db');
+  if ((await file.exists())[0]) {
+    await file.download({ destination: dbPath });
+    console.log('☁️ Database downloaded from Cloud Storage');
+  }
+} catch (e) {
+  console.log('☁️ Starting fresh local DB (No Cloud Backup found or missing permissions)');
+}
+
 const db = new Database(dbPath);
+
+// גיבוי אוטומטי לענן בכל שינוי
+db.backupToCloud = async () => {
+  try {
+    await storage.bucket(BUCKET_NAME).upload(dbPath, { destination: 'barsuf.db' });
+  } catch (e) { console.error('Cloud backup failed:', e); }
+};
 
 // הגדרות ביצועים של SQLite
 db.pragma('journal_mode = WAL');

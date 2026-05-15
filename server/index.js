@@ -262,6 +262,12 @@ app.get('*', (req, res, next) => {
   }
 });
 
+// גיבוי אוטומטי לענן כל 5 דקות
+setInterval(() => {
+  console.log('☁️ Triggering background cloud backup...');
+  db.backupToCloud();
+}, 5 * 60 * 1000);
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
