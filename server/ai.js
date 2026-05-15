@@ -4,7 +4,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai'; // החיבור הי
 import { GoogleAIFileManager } from '@google/generative-ai/server'; // ניהול קבצים מול גוגל
 import Anthropic from '@anthropic-ai/sdk'; // הגיבוי שלנו - Claude
 import db from './db.js'; // חיבור למסד הנתונים של בארסוף
-import pdf from 'pdf-parse'; // קריאת טקסט מקבצי PDF
+// import pdf from 'pdf-parse'; // הוסר בגלל בעיית תאימות ב-ESM
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 import { VectorStorage } from 'vector-storage'; // מסד נתונים וקטורי לחיפוש סמנטי (משמעות)
 
 // איפה שומרים את הזיכרון הזמני של ה-AI
@@ -64,7 +67,7 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
     // שמירה באינדקס הסמנטי לחיפוש עתידי
     if (mimeType === 'application/pdf') {
       const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdf(dataBuffer);
+      const data = await pdfParse(dataBuffer);
       const chunks = data.text.match(/[\s\S]{1,1000}/g) || [];
       for (const chunk of chunks) {
         const embedding = await getEmbeddings(chunk);
@@ -105,7 +108,7 @@ export const generateProposal = async (filePath, tenderId) => {
     updateLiveStatus(tenderId, "סורק את כתב הכמויות...");
     const { genAI } = getGeminiClients();
     const dataBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdf(dataBuffer);
+    const pdfData = await pdfParse(dataBuffer);
     
     updateLiveStatus(tenderId, "מחפש מחירים היסטוריים במאגר...");
     const priceQueryEmbedding = await getEmbeddings("מחירי יחידה, הצעת מחיר, בטון, שלד, עבודות עפר");
