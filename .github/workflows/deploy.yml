@@ -5,6 +5,10 @@ on:
     branches:
       - main # האוטומציה תרוץ בכל פעם שדוחפים קוד לענף הראשי
 
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
 env:
   PROJECT_ID: project-e7b25b42-8e43-4df1-8ce # מזהה הפרויקט שלכם
   SERVICE_NAME: barsuf # שם השירות בענן
@@ -21,7 +25,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}' # כאן נשים את המפתח שנייצר
+          workload_identity_provider: 'projects/866412886831/locations/global/workload-identity-pools/github-pool/providers/github-provider'
+          service_account: 'github-deployer@project-e7b25b42-8e43-4df1-8ce.iam.gserviceaccount.com'
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
