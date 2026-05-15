@@ -3,16 +3,7 @@ name: Deploy to Cloud Run
 on:
   push:
     branches:
-      - main # האוטומציה תרוץ בכל פעם שדוחפים קוד לענף הראשי
-
-permissions:
-  contents: 'read'
-  id-token: 'write'
-
-env:
-  PROJECT_ID: project-e7b25b42-8e43-4df1-8ce # מזהה הפרויקט שלכם
-  SERVICE_NAME: barsuf # שם השירות בענן
-  REGION: us-central1 # האזור של השרת
+      - main # רץ בכל פעם שדוחפים קוד ל-main
 
 jobs:
   deploy:
@@ -25,8 +16,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: 'projects/866412886831/locations/global/workload-identity-pools/github-pool/providers/github-provider'
-          service_account: 'github-deployer@project-e7b25b42-8e43-4df1-8ce.iam.gserviceaccount.com'
+          credentials_json: '${{ secrets.GCP_SA_KEY }}' # המפתח הסודי שתוסיף בגיטהאב
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -36,13 +26,15 @@ jobs:
 
       - name: Build and Push Container
         run: |-
-          docker build -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-          docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          # בניית האימג' של האתר ודחיפה למחסן של גוגל
+          docker build -t us-central1-docker.pkg.dev/project-e7b25b42-8e43-4df1-8ce/cloud-run-source-deploy/barsuf:${{ github.sha }} .
+          docker push us-central1-docker.pkg.dev/project-e7b25b42-8e43-4df1-8ce/cloud-run-source-deploy/barsuf:${{ github.sha }}
 
       - name: Deploy to Cloud Run
         run: |-
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }} \
-            --region ${{ env.REGION }} \
+          # פריסה סופית לענן
+          gcloud run deploy barsuf \
+            --image us-central1-docker.pkg.dev/project-e7b25b42-8e43-4df1-8ce/cloud-run-source-deploy/barsuf:${{ github.sha }} \
+            --region us-central1 \
             --platform managed \
             --allow-unauthenticated
