@@ -37,6 +37,27 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const [currentLoadingStep, setCurrentLoadingStep] = useState(0);
+  const loadingSteps = [
+    "ברבור סורק את המסמכים...",
+    "מנתח דרישות ותנאי סף...",
+    "מחפש נקודות סיכון בטקסט...",
+    "משווה למאגר הידע של החברה...",
+    "מגבש המלצה סופית..."
+  ];
+
+  useEffect(() => {
+    let interval;
+    if (loading) {
+      interval = setInterval(() => {
+        setCurrentLoadingStep(prev => (prev + 1) % loadingSteps.length);
+      }, 3000);
+    } else {
+      setCurrentLoadingStep(0);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
+
   const handleTenderAnalysis = async (e) => { // ניתוח מכרז חכם
     const file = e.target.files[0];
     if (!file) return;
@@ -51,7 +72,7 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
     setMessages(prev => [...prev, { 
       id: analysisMsgId, 
       type: 'system', 
-      text: `מנתח את המכרז "${file.name}"... זה עשוי לקחת כמה שניות (סריקת תנאי סף, לו"ז וסיכונים).` 
+      text: `מתחיל ניתוח מכרז: ${file.name}. ברבור נכנס לעומק הפרטים...` 
     }]);
 
     try {
@@ -257,9 +278,15 @@ export function ProjectChat({ projectId }) { // רכיב הצ'אט של ברבו
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-surface border border-border p-3 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-[var(--color-brand)]" />
-              <span className="text-sm text-text-secondary">ברבור מעבד את התשובה...</span>
+            <div className="bg-surface border border-border p-3 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-3">
+              <div className="relative">
+                <Loader2 className="w-5 h-5 animate-spin text-[var(--color-brand)]" />
+                <span className="absolute inset-0 flex items-center justify-center text-[8px]">🦢</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-text-primary">ברבור חושב...</span>
+                <span className="text-xs text-text-secondary animate-pulse">{loadingSteps[currentLoadingStep]}</span>
+              </div>
             </div>
           </div>
         )}
