@@ -222,6 +222,45 @@ app.delete('/api/:resourceType/:id', (req, res) => {
   }
 });
 
+// Daily Logs API
+app.get('/api/daily-logs', (req, res) => {
+  const { projectId } = req.query;
+  const logs = projectId 
+    ? db.prepare('SELECT * FROM daily_logs WHERE project_id = ? ORDER BY date DESC').all(projectId)
+    : db.prepare('SELECT * FROM daily_logs ORDER BY date DESC').all();
+  res.json(logs);
+});
+
+app.post('/api/daily-logs', (req, res) => {
+  const { project_id, date, manager_name, weather, workers_count, notes, image_url } = req.body;
+  const stmt = db.prepare('INSERT INTO daily_logs (project_id, date, manager_name, weather, workers_count, notes, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const result = stmt.run(project_id, date, manager_name, weather, workers_count, notes, image_url);
+  res.json({ id: result.lastInsertRowid });
+});
+
+// Warranty Tickets API
+app.get('/api/warranty-tickets', (req, res) => {
+  const { projectId } = req.query;
+  const tickets = projectId 
+    ? db.prepare('SELECT * FROM warranty_tickets WHERE project_id = ? ORDER BY open_date DESC').all(projectId)
+    : db.prepare('SELECT * FROM warranty_tickets ORDER BY open_date DESC').all();
+  res.json(tickets);
+});
+
+app.post('/api/warranty-tickets', (req, res) => {
+  const { project_id, client_name, phone, apartment, issue_description, open_date, status } = req.body;
+  const stmt = db.prepare('INSERT INTO warranty_tickets (project_id, client_name, phone, apartment, issue_description, open_date, status) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const result = stmt.run(project_id, client_name, phone, apartment, issue_description, open_date, status || 'פתוחה');
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/warranty-tickets/:id', (req, res) => {
+  const { status, close_date } = req.body;
+  const stmt = db.prepare('UPDATE warranty_tickets SET status = ?, close_date = ? WHERE id = ?');
+  stmt.run(status, close_date, req.params.id);
+  res.json({ success: true });
+});
+
 app.post('/api/projects/:id/chat', async (req, res) => {
   try {
     const answer = await askQuestion(req.params.id, req.body.question);

@@ -56,19 +56,40 @@ const vectorStore = {
 };
 
 export const ingestDocument = async (projectId, filePath, mimeType = "application/pdf") => {
+  console.log(`🔍 Ingesting document: ${filePath} for project ${projectId}`);
   try {
     const { fileManager } = getGeminiClients();
-    await fileManager.uploadFile(filePath, { mimeType, displayName: `Project ${projectId}` });
+    // העלאה למנהל הקבצים (לצרכי חיפוש עתידיים ב-Gemini)
+    try {
+      await fileManager.uploadFile(filePath, { mimeType, displayName: `Doc ${path.basename(filePath)}` });
+    } catch (e) { console.warn('GCS Upload in ingest failed, continuing with local embedding:', e.message); }
+
     if (mimeType === 'application/pdf') {
       const data = await pdfParse(fs.readFileSync(filePath));
-      const chunks = data.text.match(/[\s\S]{1,1000}/g) || [];
-      for (const chunk of chunks) {
+      const chunks = data.text.match(/[\s\S]{1,1500}/g) || []; // צ'אנקים גדולים יותר כדי להקטין כמות קריאות
+      console.log(`📄 PDF parsed into ${chunks.length} chunks. Starting embedding...`);
+      
+      // איסוף כל ה-embeddings בצורה יעילה יותר
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        if (chunk.trim().length < 50) continue; // סעיפים קצרים מדי לא מעניינים
+        
         const embedding = await getEmbeddings(chunk);
-        if (embedding) await vectorStore.addText(chunk, embedding, { projectId });
+        if (embedding) {
+          vectorStore.data.push({ text: chunk, embedding, metadata: { projectId, date: new Date().toISOString() } });
+        }
+        
+        // כתיבה לדיסק רק כל 10 צ'אנקים או בסוף
+        if (i % 10 === 0) fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(vectorStore.data));
       }
+      fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(vectorStore.data));
     }
+    console.log(`✅ Ingestion complete for ${projectId}`);
     return true;
-  } catch (e) { console.error('Ingest failed:', e); return false; }
+  } catch (e) { 
+    console.error('❌ Ingest failed critical error:', e.message); 
+    return false; 
+  }
 };
 
 export const analyzeTender = async (filePath, tenderId) => {
@@ -84,21 +105,26 @@ export const analyzeTender = async (filePath, tenderId) => {
       file = await fileManager.getFile(upload.file.name);
     }
 
-    updateLiveStatus(tenderId, "סורק סעיפי מכרז, תנאי סף וקנסות...");
+    updateLiveStatus(tenderId, "מנתח מכרז...");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent([
+    
+    // הוספת טיימאאוט לקריאה ל-Gemini
+    const geminiPromise = model.generateContent([
       { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, 
       { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח." }
     ]);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 45000));
+    
+    const result = await Promise.race([geminiPromise, timeoutPromise]);
     updateLiveStatus(tenderId, "ניתוח הושלם");
     return result.response.text();
   } catch (err) {
-    console.warn("Gemini failed, falling back to Claude for analyzeTender:", err);
+    console.warn("Gemini failed or timed out, falling back to Claude for analyzeTender:", err.message);
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       updateLiveStatus(tenderId, "קורא טקסט מה-PDF (Claude fallback)...");
       const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
-      updateLiveStatus(tenderId, "מנתח מכרז באמצעות Claude...");
+      updateLiveStatus(tenderId, "מנתח מכרז באמצעות Claude (יציב יותר)...");
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
@@ -107,7 +133,7 @@ export const analyzeTender = async (filePath, tenderId) => {
       updateLiveStatus(tenderId, "ניתוח הושלם (באמצעות Claude)");
       return response.content[0].text;
     } catch (claudeErr) {
-      console.error("Both Gemini and Claude failed:", claudeErr);
+      console.error("Both Gemini and Claude failed:", claudeErr.message);
       throw claudeErr;
     }
   }
@@ -139,10 +165,13 @@ export const generateProposal = async (filePath, tenderId) => {
 \`\`\``;
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent([
+    const geminiPromise = model.generateContent([
       { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } },
       { text: prompt }
     ]);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 60000));
+    
+    const result = await Promise.race([geminiPromise, timeoutPromise]);
     updateLiveStatus(tenderId, "הצעה מוכנה");
     
     const text = result.response.text();

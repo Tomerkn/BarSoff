@@ -58,26 +58,26 @@ export function ProjectChat({ projectId }) { // הרכיב שאחראי על ה�
     return () => clearInterval(interval);
   }, [loading]);
 
-  // פונקציה לניתוח מכרז חכם - ברבור צולל ל-PDF ומוציא תובנות
-  const handleTenderAnalysis = async (e) => {
+  // העלאת קובץ לפרויקט דרך הצ'אט
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setLoading(true);
-    setMessages(prev => [...prev, { id: Date.now(), type: 'system', text: `ברבור התחיל לנתח את המכרז: ${file.name}...` }]);
+    setUploading(true);
+    setMessages(prev => [...prev, { id: Date.now(), type: 'system', text: `מעלה ולומד את הקובץ: ${file.name}...` }]);
 
     try {
-      const data = await api.analyzeTender(file);
+      await api.uploadProjectFile(projectId, file);
       setMessages(prev => [...prev, { 
         id: Date.now(), 
         type: 'bot', 
-        text: `ניתוח המכרז הושלם!\n\n${data.analysis}`,
-        isTender: true
+        text: `הקובץ ${file.name} נלמד בהצלחה! אני מוכן לענות על שאלות לגביו.`
       }]);
+      fetchFiles(); // רענון רשימת הקבצים
     } catch (error) {
-      alert('הניתוח נכשל, וודא שהקובץ תקין.');
+      alert('העלאת הקובץ נכשלה, וודא שהקובץ תקין.');
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -161,10 +161,10 @@ export function ProjectChat({ projectId }) { // הרכיב שאחראי על ה�
         ))}
         
         {/* אנימציית טעינה בזמן שברבור מכין תשובה */}
-        {loading && (
+        {(loading || uploading) && (
           <div className="flex items-center gap-2 text-text-muted italic text-xs p-2">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span>{loadingSteps[currentLoadingStep]}</span>
+            <span>{uploading ? "מעלה קובץ ולומד את הנתונים..." : loadingSteps[currentLoadingStep]}</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -173,15 +173,16 @@ export function ProjectChat({ projectId }) { // הרכיב שאחראי על ה�
       {/* שורת הכתיבה - איפה ששואלים ומעלים קבצים */}
       <div className="p-4 border-t border-border bg-surface">
         <form onSubmit={handleSend} className="flex gap-2">
-          <button type="button" onClick={() => tenderInputRef.current?.click()} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg">
-            <ShieldCheck className="w-5 h-5" />
-            <input type="file" ref={tenderInputRef} className="hidden" onChange={handleTenderAnalysis} />
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg">
+            <Paperclip className="w-5 h-5" />
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           </button>
           <input 
             value={input} 
             onChange={(e) => setInput(e.target.value)} 
             placeholder="שאל את ברבור משהו על הפרויקט..." 
-            className="flex-1 p-2 bg-background border border-border rounded-lg text-sm outline-none focus:border-[var(--color-brand)]"
+            className="flex-1 p-2 bg-background border border-border rounded-lg text-sm outline-none focus:border-[var(--color-brand)] disabled:opacity-50"
+            disabled={uploading}
           />
           <button type="submit" className="bg-[var(--color-brand)] text-white p-2 rounded-lg hover:opacity-90">
             <Send className="w-5 h-5" />

@@ -119,6 +119,29 @@ db.exec(`
     order_date TEXT,
     status TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS daily_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER,
+    date TEXT,
+    manager_name TEXT,
+    weather TEXT,
+    workers_count INTEGER,
+    notes TEXT,
+    image_url TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS warranty_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER,
+    client_name TEXT,
+    phone TEXT,
+    apartment TEXT,
+    issue_description TEXT,
+    status TEXT,
+    open_date TEXT,
+    close_date TEXT
+  );
 `);
 
 console.log('✅ Database Ready at:', dbPath);

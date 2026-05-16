@@ -235,9 +235,28 @@ export default function Tenders() {
                   </div>
                 </section>
 
-                {/* אזור הצעת המחיר (אם כבר הופקה) */}
-                {selectedTender.proposal && (
+                {/* אזור הצעת המחיר (אם כבר הופקה או בהכנה) */}
+                {(selectedTender.proposal || generating || selectedTender.status === 'מתחבר למאגר המחירים ההיסטורי...' || selectedTender.status === 'מנתח כמויות וסעיפים מול ההיסטוריה...' || selectedTender.status === 'בונה כתב כמויות (BoQ) ומחשב מחיר מטרה...') && (
                   <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    {!selectedTender.proposal ? (
+                      <div className="flex flex-col items-center justify-center py-8 gap-4 bg-emerald-50/30 rounded-2xl border border-emerald-100">
+                        <div className="flex items-center gap-3 text-emerald-600 font-bold animate-pulse">
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          {selectedTender.status || "מכין הצעת מחיר..."}
+                        </div>
+                        <div className="w-full max-w-xs bg-emerald-100 h-1.5 rounded-full overflow-hidden">
+                          <div 
+                            className="bg-emerald-500 h-full transition-all duration-700 ease-in-out" 
+                            style={{ 
+                              width: selectedTender.status === 'מתחבר למאגר המחירים ההיסטורי...' ? '20%' :
+                                     selectedTender.status === 'מנתח כמויות וסעיפים מול ההיסטוריה...' ? '50%' :
+                                     selectedTender.status === 'בונה כתב כמויות (BoQ) ומחשב מחיר מטרה...' ? '85%' :
+                                     '10%'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
                     <div>
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-700 border-b pb-2 flex-1">
@@ -259,7 +278,8 @@ export default function Tenders() {
                           </div>
                         )}
                       </div>
-                    </div>
+                      </div>
+                    )}
                     
                     {/* מחשבון מחיר מטרה */}
                     {selectedTender.boq_json && (

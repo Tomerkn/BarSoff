@@ -36,6 +36,7 @@ COPY --from=frontend-build /app/dist ./dist
 # Set production env
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV NODE_OPTIONS="--no-deprecation"
 
 EXPOSE 8080
 
