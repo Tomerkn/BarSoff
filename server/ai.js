@@ -72,19 +72,19 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
 };
 
 export const analyzeTender = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "מעבד קובץ...");
+  updateLiveStatus(tenderId, "מעלה קובץ לשרתי ה-AI...");
   try {
     const { genAI, fileManager } = getGeminiClients();
     const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
     
-    // המתנה לעיבוד הקובץ בגוגל
+    updateLiveStatus(tenderId, "ממתין לעיבוד המסמך...");
     let file = await fileManager.getFile(upload.file.name);
     while (file.state === "PROCESSING") {
       await new Promise(resolve => setTimeout(resolve, 2000));
       file = await fileManager.getFile(upload.file.name);
     }
 
-    updateLiveStatus(tenderId, "מנתח מכרז...");
+    updateLiveStatus(tenderId, "סורק סעיפי מכרז, תנאי סף וקנסות...");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
     const result = await model.generateContent([
       { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, 
@@ -96,7 +96,9 @@ export const analyzeTender = async (filePath, tenderId) => {
     console.warn("Gemini failed, falling back to Claude for analyzeTender:", err);
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      updateLiveStatus(tenderId, "קורא טקסט מה-PDF (Claude fallback)...");
       const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+      updateLiveStatus(tenderId, "מנתח מכרז באמצעות Claude...");
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
@@ -112,11 +114,12 @@ export const analyzeTender = async (filePath, tenderId) => {
 };
 
 export const generateProposal = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "מעבד קובץ להצעה...");
+  updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי...");
   try {
     const { genAI, fileManager } = getGeminiClients();
     const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "TenderForProposal" });
     
+    updateLiveStatus(tenderId, "מנתח כמויות וסעיפים מול ההיסטוריה...");
     let file = await fileManager.getFile(upload.file.name);
     while (file.state === "PROCESSING") {
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -127,7 +130,8 @@ export const generateProposal = async (filePath, tenderId) => {
     const matches = await vectorStore.search(queryEmbedding, 10);
     const context = matches.map(m => m.text).join('\n---\n');
     
-    const prompt = `הכן הצעת מחיר עבור המכרז המצורף על בסיס היסטוריית המחירים שלנו: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]. בנוסף, חובה לכלול בלוק JSON המייצג כתב כמויות (BoQ) במבנה הבא (אל תשים טקסט אחר בתוך הבלוק):
+    updateLiveStatus(tenderId, "בונה כתב כמויות (BoQ) ומחשב מחיר מטרה...");
+    const prompt = `הכן הצעת מחיר עבור המכרז המצורף על בסיס היסטוריית המחירים שלנו: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]. בנוסף, חובה לכלול בלוק JSON המייצג כתב כמויות (BoQ) במבנה הבא:
 \`\`\`json
 [
   { "id": 1, "section": "שם סעיף", "item": "תיאור", "quantity": 100, "unit": "יחידה", "unitPrice": 150 }
@@ -151,8 +155,10 @@ export const generateProposal = async (filePath, tenderId) => {
   } catch (err) {
     console.warn("Gemini failed, falling back to Claude for generateProposal:", err);
     try {
+      updateLiveStatus(tenderId, "מחלץ נתונים ל-Claude...");
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+      updateLiveStatus(tenderId, "מייצר הצעה באמצעות Claude...");
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,

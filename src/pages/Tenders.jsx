@@ -213,12 +213,21 @@ export default function Tenders() {
                       <div className="flex flex-col items-center justify-center py-8 gap-4">
                         <div className="flex items-center gap-3 text-[var(--color-brand)] font-bold animate-pulse">
                           <Loader2 className="w-6 h-6 animate-spin" />
-                          {loadingSteps[currentStep]}
+                          {selectedTender.status || "מעבד נתונים..."}
                         </div>
                         <div className="w-full max-w-xs bg-blue-100 h-1.5 rounded-full overflow-hidden">
                           <div 
-                            className="bg-[var(--color-brand)] h-full transition-all duration-1000 ease-linear" 
-                            style={{ width: `${((currentStep + 1) / loadingSteps.length) * 100}%` }}
+                            className="bg-[var(--color-brand)] h-full transition-all duration-700 ease-in-out" 
+                            style={{ 
+                              width: selectedTender.status === 'מעלה קובץ לשרתי ה-AI...' ? '15%' :
+                                     selectedTender.status === 'ממתין לעיבוד המסמך...' ? '30%' :
+                                     selectedTender.status === 'סורק סעיפי מכרז, תנאי סף וקנסות...' ? '60%' :
+                                     selectedTender.status === 'ניתוח הושלם' ? '100%' :
+                                     selectedTender.status === 'מתחבר למאגר המחירים ההיסטורי...' ? '20%' :
+                                     selectedTender.status === 'מנתח כמויות וסעיפים מול ההיסטוריה...' ? '50%' :
+                                     selectedTender.status === 'בונה כתב כמויות (BoQ) ומחשב מחיר מטרה...' ? '85%' :
+                                     '10%'
+                            }}
                           />
                         </div>
                       </div>
