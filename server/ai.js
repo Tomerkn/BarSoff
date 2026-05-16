@@ -130,25 +130,42 @@ ${shortText}` }]
     updateLiveStatus(tenderId, "מנתח את המכרז...");
   }
 
-  // --- שלב 2: ניתוח עמוק עם claude-sonnet (10-15 שניות) ---
+  // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
   try {
     const deepResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
-      max_tokens: 2500,
-      messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח. 
-חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
+      max_tokens: 3500,
+      messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
+
+בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
+\`\`\`json
+[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
+\`\`\`
 
 מסמך המכרז:
 ${fullText}` }]
     });
+    
+    const rawText = deepResponse.content[0].text;
+    // מפריד את בלוק ה-JSON מתוך הניתוח
+    let boq_json = null;
+    const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonMatch) {
+      try {
+        JSON.parse(jsonMatch[1].trim()); // בדיקה שה-JSON תקין
+        boq_json = jsonMatch[1].trim();
+      } catch (e) { console.warn('BoQ JSON parse failed in analysis:', e.message); }
+    }
+    const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
+    
     updateLiveStatus(tenderId, "ניתוח הושלם");
-    return deepResponse.content[0].text;
+    return { analysis, boq_json };
   } catch (sonnetErr) {
     console.warn('Phase 2 deep analysis failed, returning phase 1 result:', sonnetErr.message);
-    // אם שלב 2 נכשל, מחזירים את שלב 1 (שהוא כבר שמור)
     if (quickAnalysis) {
       updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
-      return quickAnalysis;
+      return { analysis: quickAnalysis, boq_json: null };
     }
     throw sonnetErr;
   }

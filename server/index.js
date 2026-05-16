@@ -131,11 +131,12 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
       console.log(`⚡ Phase 1 quick analysis saved for tender ${tenderId}`);
     };
 
-    analyzeTender(req.file.path, tenderId, onPhaseOneComplete).then(analysis => {
-      // שמירת הניתוח המלא והעמוק
-      db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
+    analyzeTender(req.file.path, tenderId, onPhaseOneComplete).then(({ analysis, boq_json }) => {
+      // שמירת הניתוח המלא + כתב כמויות ראשוני
+      db.prepare('UPDATE tenders SET analysis = ?, boq_json = ?, status = ? WHERE id = ?')
+        .run(analysis, boq_json, 'נותח', tenderId);
       ingestDocument('global', req.file.path).catch(e => console.error('Global ingest failed:', e));
-      console.log(`✅ Phase 2 deep analysis saved for tender ${tenderId}`);
+      console.log(`✅ Phase 2 deep analysis + BoQ saved for tender ${tenderId}, boq: ${boq_json ? 'yes' : 'none'}`);
     }).catch(err => {
       console.error('AI Analysis failed for tender:', tenderId, err);
       // אם יש ניתוח ראשוני (משלב 1), לא מציגים שגיאה

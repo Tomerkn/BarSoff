@@ -310,17 +310,33 @@ export default function Tenders() {
                         </div>
                       </div>
                     )}
-                    
-                    {/* מחשבון מחיר מטרה */}
-                    {selectedTender.boq_json && (
-                      <TargetPriceCalculator 
-                        tenderId={selectedTender.id} 
-                        initialBoqJson={selectedTender.boq_json} 
-                      />
-                    )}
                   </section>
                 )}
               </div>
+            </div>
+
+                {/* מחשבון מחיר מטרה — מופיע מיד אחרי הניתוח, גם בלי הצעה */}
+                {selectedTender.boq_json && (
+                  <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 px-6 pb-6">
+                    <TargetPriceCalculator 
+                      tenderId={selectedTender.id} 
+                      initialBoqJson={selectedTender.boq_json} 
+                    />
+                    {/* CTA להפקת הצעה מלאה אם עוד לא הופקה */}
+                    {!selectedTender.proposal && selectedTender.status === 'נותח' && (
+                      <div className="mt-4 flex justify-center">
+                        <button
+                          onClick={() => generateProposal(selectedTender.id)}
+                          disabled={generating}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow text-sm font-bold"
+                        >
+                          {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+                          הפק הצעת מחיר מפורטת על בסיס ההיסטוריה שלנו
+                        </button>
+                      </div>
+                    )}
+                  </section>
+                )}
             </div>
           ) : (
             // מסך ריק שמופיע כשעדיין לא נבחר מכרז מהרשימה
