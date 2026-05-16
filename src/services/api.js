@@ -165,5 +165,22 @@ export const api = { // יצירת השליח שמדבר עם השרת
     });
     if (!response.ok) throw new Error('נכשל בהפקת הצעת מחיר');
     return response.json();
+  },
+  // העלאת קובץ לפרויקט (מסמכים, תמונות)
+  uploadProjectFile: async (projectId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/files`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('נכשל בהעלאת הקובץ');
+    return response.json();
+  },
+  // קבלת כל קבצי הפרויקט
+  getProjectFiles: async (projectId) => {
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/media`);
+    if (!response.ok) throw new Error('נכשל בטעינת קבצי הפרויקט');
+    return response.json();
   }
 };

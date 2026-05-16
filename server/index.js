@@ -28,6 +28,8 @@ app.use(express.json());
 // הגשת קבצי האתר (Frontend)
 const distPath = path.join(root, 'dist');
 app.use(express.static(distPath));
+// הגשת הקבצים שהועלו כקבצים סטטיים
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // API
 app.get('/api/health', (req, res) => res.json({ status: 'ok', root }));
@@ -107,6 +109,24 @@ app.get('/api/projects/:id/analytics', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch project analytics' });
   }
+});
+
+// ===== Project Media / Files API =====
+app.get('/api/projects/:id/media', (req, res) => {
+  const files = db.prepare('SELECT * FROM files WHERE project_id = ? ORDER BY upload_date DESC').all(req.params.id);
+  // מוסיפים URL לכל קובץ כדי שהפרונט יוכל להציג אותו
+  const filesWithUrl = files.map(f => ({
+    ...f,
+    url: `/uploads/${f.filename}`
+  }));
+  res.json(filesWithUrl);
+});
+
+app.post('/api/projects/:id/files', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const stmt = db.prepare('INSERT INTO files (project_id, filename, original_name, upload_date) VALUES (?, ?, ?, ?)');
+  const result = stmt.run(req.params.id, req.file.filename, req.file.originalname, new Date().toISOString());
+  res.json({ id: result.lastInsertRowid, url: `/uploads/${req.file.filename}`, filename: req.file.filename, original_name: req.file.originalname });
 });
 
 app.get('/api/tenders', (req, res) => {
