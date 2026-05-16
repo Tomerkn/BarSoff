@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation, useParams } from 'react-router-dom';
+import { version } from '../../../package.json'; // גרסה אוטומטית מ-package.json
 import { 
   LayoutDashboard, 
   Briefcase, 
@@ -113,7 +114,7 @@ export function Sidebar({ isOpen, setIsOpen }) {
           הגדרות
         </button>
         <div className="mt-2 px-3 text-[10px] text-text-muted font-medium tracking-tight">
-          BARSUF v1.0.4
+          BARSUF v{version}
         </div>
       </div>
     </aside>
