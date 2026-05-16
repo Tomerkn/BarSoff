@@ -252,14 +252,25 @@ app.get('/api/analytics/global', (req, res) => {
 });
 
 // Wildcard routing for SPA
-app.get('(.*)', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: `API route not found: ${req.path}` });
+  }
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
     res.status(404).send('Frontend build not found.');
   }
+});
+
+// Global API error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled API Error:', err);
+  if (req.path.startsWith('/api')) {
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+  }
+  res.status(500).send('Internal Server Error');
 });
 
 // גיבוי אוטומטי לענן כל 5 דקות

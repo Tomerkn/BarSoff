@@ -73,12 +73,30 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
 
 export const analyzeTender = async (filePath, tenderId) => {
   updateLiveStatus(tenderId, "סורק מכרז...");
-  const { genAI, fileManager } = getGeminiClients();
-  const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-  const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. בסוף הניתוח, הוסף שורה: 'מדד ביטחון ניתוח: XX%' על בסיס איכות הטקסט במסמך." }]);
-  updateLiveStatus(tenderId, "ניתוח הושלם");
-  return result.response.text();
+  try {
+    const { genAI, fileManager } = getGeminiClients();
+    const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. בסוף הניתוח, הוסף שורה: 'מדד ביטחון ניתוח: XX%' על בסיס איכות הטקסט במסמך." }]);
+    updateLiveStatus(tenderId, "ניתוח הושלם");
+    return result.response.text();
+  } catch (err) {
+    console.warn("Gemini failed, falling back to Claude for analyzeTender:", err);
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: `נתח את המכרז הבא לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. בסוף הניתוח, הוסף שורה: 'מדד ביטחון ניתוח: XX%' על בסיס איכות הטקסט במסמך.\n\nהמכרז:\n${pdfText}` }]
+      });
+      updateLiveStatus(tenderId, "ניתוח הושלם (באמצעות Claude)");
+      return response.content[0].text;
+    } catch (claudeErr) {
+      console.error("Both Gemini and Claude failed:", claudeErr);
+      throw claudeErr;
+    }
+  }
 };
 
 export const generateProposal = async (filePath, tenderId) => {
@@ -86,27 +104,65 @@ export const generateProposal = async (filePath, tenderId) => {
   const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
   const matches = await vectorStore.search(queryEmbedding, 10);
   const context = matches.map(m => m.text).join('\n---\n');
-  const { genAI } = getGeminiClients();
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-  const result = await model.generateContent(`הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית.`);
-  updateLiveStatus(tenderId, "הצעה מוכנה");
-  return result.response.text();
+  
+  try {
+    const { genAI } = getGeminiClients();
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const result = await model.generateContent(`הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית.`);
+    updateLiveStatus(tenderId, "הצעה מוכנה");
+    return result.response.text();
+  } catch (err) {
+    console.warn("Gemini failed, falling back to Claude for generateProposal:", err);
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: `הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית.` }]
+      });
+      updateLiveStatus(tenderId, "הצעה מוכנה (באמצעות Claude)");
+      return response.content[0].text;
+    } catch (claudeErr) {
+      throw claudeErr;
+    }
+  }
 };
 
 export const askQuestion = async (projectId, question) => {
   const queryEmbedding = await getEmbeddings(question);
   const matches = await vectorStore.search(queryEmbedding, 5);
   const context = matches.map(m => m.text).join('\n---\n');
-  const { genAI } = getGeminiClients();
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית.`);
-  return result.response.text();
+  
+  try {
+    const { genAI } = getGeminiClients();
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית.`);
+    return result.response.text();
+  } catch (err) {
+    console.warn("Gemini failed, falling back to Claude for askQuestion:", err);
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const response = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: `ענה על: ${question}. הקשר: ${context}. ענה בעברית.` }]
+      });
+      return response.content[0].text;
+    } catch (claudeErr) {
+      throw claudeErr;
+    }
+  }
 };
 
 export const analyzeReceipt = async (filePath, mimeType) => {
-  const { fileManager, genAI } = getGeminiClients();
-  const upload = await fileManager.uploadFile(filePath, { mimeType, displayName: "Receipt" });
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "חלץ נתוני קבלה ל-JSON." }]);
-  return JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+  try {
+    const { fileManager, genAI } = getGeminiClients();
+    const upload = await fileManager.uploadFile(filePath, { mimeType, displayName: "Receipt" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "חלץ נתוני קבלה ל-JSON." }]);
+    return JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
+  } catch (e) {
+    console.error("Receipt analysis failed:", e);
+    return { error: "Failed to analyze receipt" };
+  }
 };
