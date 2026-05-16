@@ -72,12 +72,24 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
 };
 
 export const analyzeTender = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "סורק מכרז...");
+  updateLiveStatus(tenderId, "מעבד קובץ...");
   try {
     const { genAI, fileManager } = getGeminiClients();
     const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
+    
+    // המתנה לעיבוד הקובץ בגוגל
+    let file = await fileManager.getFile(upload.file.name);
+    while (file.state === "PROCESSING") {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      file = await fileManager.getFile(upload.file.name);
+    }
+
+    updateLiveStatus(tenderId, "מנתח מכרז...");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח." }]);
+    const result = await model.generateContent([
+      { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, 
+      { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח." }
+    ]);
     updateLiveStatus(tenderId, "ניתוח הושלם");
     return result.response.text();
   } catch (err) {
@@ -88,7 +100,7 @@ export const analyzeTender = async (filePath, tenderId) => {
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
-        messages: [{ role: "user", content: `נתח את המכרז הבא לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח.\n\nהמכרז:\n${pdfText}` }]
+        messages: [{ role: "user", content: `נתח את המכרז הבא לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE].\n\nהמכרז:\n${pdfText}` }]
       });
       updateLiveStatus(tenderId, "ניתוח הושלם (באמצעות Claude)");
       return response.content[0].text;
@@ -100,46 +112,63 @@ export const analyzeTender = async (filePath, tenderId) => {
 };
 
 export const generateProposal = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "מכין הצעה וכתב כמויות...");
-  const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
-  const matches = await vectorStore.search(queryEmbedding, 10);
-  const context = matches.map(m => m.text).join('\n---\n');
-  
-  const prompt = `הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]. בנוסף, חובה לכלול בלוק JSON המייצג כתב כמויות (BoQ) במבנה הבא (אל תשים טקסט אחר בתוך הבלוק):
+  updateLiveStatus(tenderId, "מעבד קובץ להצעה...");
+  try {
+    const { genAI, fileManager } = getGeminiClients();
+    const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "TenderForProposal" });
+    
+    let file = await fileManager.getFile(upload.file.name);
+    while (file.state === "PROCESSING") {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      file = await fileManager.getFile(upload.file.name);
+    }
+
+    const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
+    const matches = await vectorStore.search(queryEmbedding, 10);
+    const context = matches.map(m => m.text).join('\n---\n');
+    
+    const prompt = `הכן הצעת מחיר עבור המכרז המצורף על בסיס היסטוריית המחירים שלנו: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]. בנוסף, חובה לכלול בלוק JSON המייצג כתב כמויות (BoQ) במבנה הבא (אל תשים טקסט אחר בתוך הבלוק):
 \`\`\`json
 [
-  { "id": 1, "section": "שם סעיף (למשל עבודות גמר)", "item": "תיאור מדויק", "quantity": 100, "unit": "יחידת מידה", "unitPrice": 150 }
+  { "id": 1, "section": "שם סעיף", "item": "תיאור", "quantity": 100, "unit": "יחידה", "unitPrice": 150 }
 ]
 \`\`\``;
 
-  const extractResult = (text) => {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+    const result = await model.generateContent([
+      { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } },
+      { text: prompt }
+    ]);
+    updateLiveStatus(tenderId, "הצעה מוכנה");
+    
+    const text = result.response.text();
     let boq_json = null;
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
     if (jsonMatch) {
       try { boq_json = jsonMatch[1].trim(); } catch (e) {}
-      text = text.replace(jsonMatch[0], '');
     }
-    return { proposal: text.trim(), boq_json };
-  };
-
-  try {
-    const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent(prompt);
-    updateLiveStatus(tenderId, "הצעה מוכנה");
-    return extractResult(result.response.text());
+    return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
   } catch (err) {
     console.warn("Gemini failed, falling back to Claude for generateProposal:", err);
     try {
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }]
+        messages: [{ role: "user", content: `${prompt}\n\nהמכרז:\n${pdfText}` }]
       });
       updateLiveStatus(tenderId, "הצעה מוכנה (באמצעות Claude)");
-      return extractResult(response.content[0].text);
+      
+      const text = response.content[0].text;
+      let boq_json = null;
+      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        try { boq_json = jsonMatch[1].trim(); } catch (e) {}
+      }
+      return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
     } catch (claudeErr) {
+      console.error("Both Gemini and Claude failed for proposal:", claudeErr);
       throw claudeErr;
     }
   }

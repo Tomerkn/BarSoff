@@ -152,7 +152,11 @@ export const api = { // יצירת השליח שמדבר עם השרת
       method: 'POST',
       body: formData
     });
-    if (!response.ok) throw new Error('נכשל בהעלאת מכרז');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Upload failed details:', errorText);
+      throw new Error(`נכשל בהעלאת מכרז: ${errorText}`);
+    }
     return response.json();
   },
   generateTenderProposal: async (tenderId) => {

@@ -115,17 +115,28 @@ app.get('/api/tenders', (req, res) => {
 });
 
 app.post('/api/tenders', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).send('No file uploaded');
-  const insert = db.prepare('INSERT INTO tenders (name, filename, upload_date, status) VALUES (?, ?, ?, ?)');
-  const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
-  const tenderId = info.lastInsertRowid;
+  console.log('📥 Received tender upload:', req.file?.originalname);
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   
-  analyzeTender(req.file.path, tenderId).then(analysis => {
-    db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
-    ingestDocument('global', req.file.path);
-  }).catch(e => db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId));
+  try {
+    const insert = db.prepare('INSERT INTO tenders (name, filename, upload_date, status) VALUES (?, ?, ?, ?)');
+    const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
+    const tenderId = info.lastInsertRowid;
+    
+    // הפעלה אסינכרונית של הניתוח
+    analyzeTender(req.file.path, tenderId).then(analysis => {
+      db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
+      ingestDocument('global', req.file.path).catch(e => console.error('Global ingest failed:', e));
+    }).catch(err => {
+      console.error('AI Analysis failed for tender:', tenderId, err);
+      db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId);
+    });
 
-  res.status(201).json({ id: tenderId });
+    res.status(201).json({ id: tenderId });
+  } catch (err) {
+    console.error('Database error during tender upload:', err);
+    res.status(500).json({ error: 'Failed to create tender entry', details: err.message });
+  }
 });
 
 app.post('/api/tenders/:id/proposal', async (req, res) => {
@@ -137,19 +148,7 @@ app.post('/api/tenders/:id/proposal', async (req, res) => {
 });
 
 // --- AI Aliases from old API ---
-app.post('/api/analyze-tender', upload.single('file'), async (req, res) => {
-  if (!req.file) return res.status(400).send('No file uploaded');
-  const insert = db.prepare('INSERT INTO tenders (name, filename, upload_date, status) VALUES (?, ?, ?, ?)');
-  const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
-  const tenderId = info.lastInsertRowid;
-  
-  analyzeTender(req.file.path, tenderId).then(analysis => {
-    db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
-    ingestDocument('global', req.file.path);
-  }).catch(e => db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId));
-
-  res.status(201).json({ id: tenderId });
-});
+app.post('/api/analyze-tender', (req, res) => res.redirect(307, '/api/tenders'));
 
 app.post('/api/global-knowledge', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).send('No file uploaded');

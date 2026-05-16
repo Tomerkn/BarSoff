@@ -141,11 +141,15 @@ export default function Tenders() {
                       <Clock className="w-3 h-3 text-text-muted" />
                       <span className="text-xs text-text-muted">{new Date(tender.upload_date).toLocaleDateString('he-IL')}</span>
                     </div>
+                    {tender.boq_json && (
+                      <div className="mt-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
+                        מחיר מטרה: {JSON.parse(tender.boq_json).reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0).toLocaleString()} ₪
+                      </div>
+                    )}
                   </div>
-                  {/* סטטוס המכרז - מנתח, נותח או הצעה מוכנה */}
                   <div className={`px-2 py-1 rounded-full text-[10px] font-bold shrink-0 ${
                     tender.status === 'נותח' ? 'bg-emerald-100 text-emerald-700' :
-                    tender.status === 'הצעה מוכנה' ? 'bg-blue-100 text-blue-700' :
+                    tender.status === 'הצעה מוכנה' || tender.status === 'מוכן' ? 'bg-blue-100 text-blue-700' :
                     'bg-amber-100 text-amber-700'
                   }`}>
                     {tender.status}
@@ -191,11 +195,32 @@ export default function Tenders() {
                     <Search className="w-5 h-5 text-blue-500" />
                     ניתוח מכרז חכם
                   </h3>
-                  <div className="prose prose-sm max-w-none text-text-primary bg-blue-50/30 p-4 rounded-xl border border-blue-100 leading-relaxed whitespace-pre-wrap">
-                    {selectedTender.analysis || (
-                      <div className="flex items-center gap-3 text-[var(--color-brand)] font-medium">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        {loadingSteps[currentStep]}
+                  <div className="prose prose-sm max-w-none text-text-primary bg-blue-50/30 p-4 rounded-xl border border-blue-100 leading-relaxed whitespace-pre-wrap relative">
+                    {selectedTender.analysis ? (
+                      <>
+                        {selectedTender.analysis.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
+                        {selectedTender.analysis.includes('[CONFIDENCE]') && (
+                          <div className="mt-4 pt-4 border-t border-blue-100 flex justify-end">
+                            {(() => {
+                              const conf = parseInt(selectedTender.analysis.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                              const color = conf > 80 ? 'text-emerald-600 bg-emerald-50' : conf > 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
+                              return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color} border border-current/20`}>וודאות ניתוח: {conf}%</span>
+                            })()}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 gap-4">
+                        <div className="flex items-center gap-3 text-[var(--color-brand)] font-bold animate-pulse">
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          {loadingSteps[currentStep]}
+                        </div>
+                        <div className="w-full max-w-xs bg-blue-100 h-1.5 rounded-full overflow-hidden">
+                          <div 
+                            className="bg-[var(--color-brand)] h-full transition-all duration-1000 ease-linear" 
+                            style={{ width: `${((currentStep + 1) / loadingSteps.length) * 100}%` }}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -211,10 +236,19 @@ export default function Tenders() {
                           הצעת מחיר מבוססת היסטוריה
                         </h3>
                       </div>
-                      <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner mb-6">
+                      <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner mb-6 relative">
                         <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
-                          {selectedTender.proposal}
+                          {selectedTender.proposal.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
                         </div>
+                        {selectedTender.proposal.includes('[CONFIDENCE]') && (
+                          <div className="mt-4 pt-4 border-t border-emerald-100 flex justify-end">
+                            {(() => {
+                              const conf = parseInt(selectedTender.proposal.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                              const color = conf > 80 ? 'text-emerald-600 bg-emerald-50' : conf > 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
+                              return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color} border border-current/20`}>וודאות הצעה: {conf}%</span>
+                            })()}
+                          </div>
+                        )}
                       </div>
                     </div>
                     
