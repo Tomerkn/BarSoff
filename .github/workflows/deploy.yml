@@ -5,7 +5,8 @@ on:
     branches:
       - main
 
-
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # עדכון ל-Node.js 24 לפני שיהפוך לברירת מחדל
 
 jobs:
   deploy:
@@ -18,7 +19,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}' # וודא שהשם בגיטהאב תואם בדיוק!
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -29,4 +30,5 @@ jobs:
             --source . \
             --region europe-west1 \
             --platform managed \
-            --allow-unauthenticated
+            --allow-unauthenticated \
+            --quiet
