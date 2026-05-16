@@ -93,118 +93,138 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
 };
 
 export const analyzeTender = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "מעלה קובץ לשרתי ה-AI...");
+  // Claude קודם - מהיר ויציב. Gemini כגיבוי בלבד.
+  updateLiveStatus(tenderId, "קורא את מסמך המכרז...");
+  
   try {
-    const { genAI, fileManager } = getGeminiClients();
-    const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
+    const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+    const truncatedText = pdfText.slice(0, 15000); // מגביל ל-15K תווים כדי לא לחרוג ממגבלת Claude
     
-    updateLiveStatus(tenderId, "ממתין לעיבוד המסמך...");
-    let file = await fileManager.getFile(upload.file.name);
-    while (file.state === "PROCESSING") {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      file = await fileManager.getFile(upload.file.name);
-    }
+    updateLiveStatus(tenderId, "ברבור מנתח תנאי סף, לוחות זמנים וקנסות...");
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 2500,
+      messages: [{ 
+        role: "user", 
+        content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח. 
+חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
-    updateLiveStatus(tenderId, "מנתח מכרז...");
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    
-    // הוספת טיימאאוט לקריאה ל-Gemini
-    const geminiPromise = model.generateContent([
-      { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, 
-      { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח." }
-    ]);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 45000));
-    
-    const result = await Promise.race([geminiPromise, timeoutPromise]);
+מסמך המכרז:
+${truncatedText}` 
+      }]
+    });
     updateLiveStatus(tenderId, "ניתוח הושלם");
-    return result.response.text();
-  } catch (err) {
-    console.warn("Gemini failed or timed out, falling back to Claude for analyzeTender:", err.message);
+    return response.content[0].text;
+  } catch (claudeErr) {
+    console.warn("Claude failed for analyzeTender, trying Gemini:", claudeErr.message);
     try {
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      updateLiveStatus(tenderId, "קורא טקסט מה-PDF (Claude fallback)...");
-      const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
-      updateLiveStatus(tenderId, "מנתח מכרז באמצעות Claude (יציב יותר)...");
-      const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: `נתח את המכרז הבא לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE].\n\nהמכרז:\n${pdfText}` }]
-      });
-      updateLiveStatus(tenderId, "ניתוח הושלם (באמצעות Claude)");
-      return response.content[0].text;
-    } catch (claudeErr) {
-      console.error("Both Gemini and Claude failed:", claudeErr.message);
-      throw claudeErr;
+      // Gemini כגיבוי - מנסה להעלות את ה-PDF ישירות
+      updateLiveStatus(tenderId, "מנסה ניתוח חלופי...");
+      const { genAI, fileManager } = getGeminiClients();
+      const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
+      let file = await fileManager.getFile(upload.file.name);
+      let waitCount = 0;
+      while (file.state === "PROCESSING" && waitCount < 10) {
+        await new Promise(r => setTimeout(r, 2000));
+        file = await fileManager.getFile(upload.file.name);
+        waitCount++;
+      }
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      const result = await Promise.race([
+        model.generateContent([
+          { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } },
+          { text: "נתח את המכרז לעומק בעברית. כלול תנאי סף, לוחות זמנים וקנסות. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]." }
+        ]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 30000))
+      ]);
+      updateLiveStatus(tenderId, "ניתוח הושלם");
+      return result.response.text();
+    } catch (geminiErr) {
+      console.error("Both Claude and Gemini failed:", geminiErr.message);
+      throw geminiErr;
     }
   }
 };
 
 export const generateProposal = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי...");
+  // Claude קודם - מהיר ויציב
+  updateLiveStatus(tenderId, "מחלץ נתוני מכרז...");
+  
   try {
-    const { genAI, fileManager } = getGeminiClients();
-    const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "TenderForProposal" });
+    const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+    const truncatedText = pdfText.slice(0, 12000);
     
-    updateLiveStatus(tenderId, "מנתח כמויות וסעיפים מול ההיסטוריה...");
-    let file = await fileManager.getFile(upload.file.name);
-    while (file.state === "PROCESSING") {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      file = await fileManager.getFile(upload.file.name);
-    }
+    updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי...");
+    const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה, כתב כמויות");
+    const matches = await vectorStore.search(queryEmbedding, 8);
+    const context = matches.length > 0 ? matches.map(m => m.text).join('\n---\n') : "אין היסטוריית מחירים זמינה";
+    
+    updateLiveStatus(tenderId, "בונה כתב כמויות ומחשב מחיר מטרה...");
+    const prompt = `בהתבסס על מסמך המכרז ועל היסטוריית המחירים שלנו, הכן הצעת מחיר מפורטת בעברית.
+    
+היסטוריית מחירים:
+${context}
 
-    const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
-    const matches = await vectorStore.search(queryEmbedding, 10);
-    const context = matches.map(m => m.text).join('\n---\n');
-    
-    updateLiveStatus(tenderId, "בונה כתב כמויות (BoQ) ומחשב מחיר מטרה...");
-    const prompt = `הכן הצעת מחיר עבור המכרז המצורף על בסיס היסטוריית המחירים שלנו: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]. בנוסף, חובה לכלול בלוק JSON המייצג כתב כמויות (BoQ) במבנה הבא:
+מסמך המכרז:
+${truncatedText}
+
+דרישות:
+1. הכן כתב כמויות (BoQ) מפורט
+2. השתמש במחירי יחידה מהיסטוריית המחירים שלנו
+3. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
+4. חובה לכלול בלוק JSON במבנה הזה:
 \`\`\`json
-[
-  { "id": 1, "section": "שם סעיף", "item": "תיאור", "quantity": 100, "unit": "יחידה", "unitPrice": 150 }
-]
+[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
 \`\`\``;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const geminiPromise = model.generateContent([
-      { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } },
-      { text: prompt }
-    ]);
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 60000));
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-sonnet-20241022",
+      max_tokens: 3000,
+      messages: [{ role: "user", content: prompt }]
+    });
     
-    const result = await Promise.race([geminiPromise, timeoutPromise]);
     updateLiveStatus(tenderId, "הצעה מוכנה");
-    
-    const text = result.response.text();
+    const text = response.content[0].text;
     let boq_json = null;
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
     if (jsonMatch) {
       try { boq_json = jsonMatch[1].trim(); } catch (e) {}
     }
     return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
-  } catch (err) {
-    console.warn("Gemini failed, falling back to Claude for generateProposal:", err);
+    
+  } catch (claudeErr) {
+    console.warn("Claude failed for generateProposal, trying Gemini:", claudeErr.message);
     try {
-      updateLiveStatus(tenderId, "מחלץ נתונים ל-Claude...");
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
-      updateLiveStatus(tenderId, "מייצר הצעה באמצעות Claude...");
-      const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: `${prompt}\n\nהמכרז:\n${pdfText}` }]
-      });
-      updateLiveStatus(tenderId, "הצעה מוכנה (באמצעות Claude)");
-      
-      const text = response.content[0].text;
+      updateLiveStatus(tenderId, "מנסה שיטת גיבוי...");
+      const { genAI, fileManager } = getGeminiClients();
+      const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "TenderForProposal" });
+      let file = await fileManager.getFile(upload.file.name);
+      let waitCount = 0;
+      while (file.state === "PROCESSING" && waitCount < 10) {
+        await new Promise(r => setTimeout(r, 2000));
+        file = await fileManager.getFile(upload.file.name);
+        waitCount++;
+      }
+      const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
+      const matches = await vectorStore.search(queryEmbedding, 10);
+      const context = matches.map(m => m.text).join('\n---\n');
+      const fallbackPrompt = `הכן הצעת מחיר מבוססת על המכרז המצורף והיסטוריה: ${context}. ענה בעברית. סיים עם [CONFIDENCE]XX[/CONFIDENCE] ובלוק JSON של BoQ.`;
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      const result = await Promise.race([
+        model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: fallbackPrompt }]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 30000))
+      ]);
+      updateLiveStatus(tenderId, "הצעה מוכנה");
+      const text = result.response.text();
       let boq_json = null;
       const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch) {
-        try { boq_json = jsonMatch[1].trim(); } catch (e) {}
-      }
+      if (jsonMatch) { try { boq_json = jsonMatch[1].trim(); } catch (e) {} }
       return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
-    } catch (claudeErr) {
-      console.error("Both Gemini and Claude failed for proposal:", claudeErr);
-      throw claudeErr;
+    } catch (geminiErr) {
+      console.error("Both Claude and Gemini failed for proposal:", geminiErr.message);
+      throw geminiErr;
     }
   }
 };

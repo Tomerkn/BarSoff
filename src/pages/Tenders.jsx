@@ -33,13 +33,23 @@ export default function Tenders() {
   }, [uploading, generating]);
 
   // מנגנון רענון אוטומטי כדי לראות סטטוס חי של ברבור
+  // עוצר פולינג כשהמכרז הושלם, נכשל, או שאין בעיבוד
   useEffect(() => {
     const hasInProgress = tenders.some(t => 
-      t.status !== 'נותח' && t.status !== 'הצעה מוכנה' && t.status !== 'שגיאה'
+      t.status !== 'נותח' && 
+      t.status !== 'הצעה מוכנה' && 
+      t.status !== 'מוכן' &&
+      t.status !== 'שגיאה' &&
+      t.status !== null
     );
 
     if (hasInProgress) {
-      const interval = setInterval(fetchTenders, 3000); // רענון כל 3 שניות
+      const interval = setInterval(async () => {
+        const data = await api.getTenders();
+        setTenders(data);
+        // עדכון המכרז הנבחר אם הוא מה שמתעדכן
+        setSelectedTender(prev => prev ? data.find(t => t.id === prev.id) || prev : null);
+      }, 3000);
       return () => clearInterval(interval);
     }
   }, [tenders]);
@@ -209,7 +219,23 @@ export default function Tenders() {
                           </div>
                         )}
                       </>
+                    ) : selectedTender.status === 'שגיאה' ? (
+                      // מצב שגיאה - מציג הודעה ברורה ולא טעינה
+                      <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
+                        <AlertCircle className="w-12 h-12 text-red-400" />
+                        <div>
+                          <p className="font-bold text-red-600 text-base">ברבור נתקל בבעיה בניתוח המכרז</p>
+                          <p className="text-text-muted text-sm mt-1">הקובץ אולי פגום, מוגן בסיסמה, או שהשירות זמנית עמוס.</p>
+                        </div>
+                        <button
+                          onClick={handleFileUpload}
+                          className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+                        >
+                          העלה את המכרז מחדש
+                        </button>
+                      </div>
                     ) : (
+                      // מצב טעינה תקין - מציג פס התקדמות
                       <div className="flex flex-col items-center justify-center py-8 gap-4">
                         <div className="flex items-center gap-3 text-[var(--color-brand)] font-bold animate-pulse">
                           <Loader2 className="w-6 h-6 animate-spin" />
@@ -221,15 +247,13 @@ export default function Tenders() {
                             style={{ 
                               width: selectedTender.status === 'מעלה קובץ לשרתי ה-AI...' ? '15%' :
                                      selectedTender.status === 'ממתין לעיבוד המסמך...' ? '30%' :
-                                     selectedTender.status === 'סורק סעיפי מכרז, תנאי סף וקנסות...' ? '60%' :
+                                     selectedTender.status === 'מנתח מכרז...' ? '60%' :
                                      selectedTender.status === 'ניתוח הושלם' ? '100%' :
-                                     selectedTender.status === 'מתחבר למאגר המחירים ההיסטורי...' ? '20%' :
-                                     selectedTender.status === 'מנתח כמויות וסעיפים מול ההיסטוריה...' ? '50%' :
-                                     selectedTender.status === 'בונה כתב כמויות (BoQ) ומחשב מחיר מטרה...' ? '85%' :
                                      '10%'
                             }}
                           />
                         </div>
+                        <p className="text-xs text-text-muted">זה עשוי לקחת עד דקה עבור קבצים גדולים</p>
                       </div>
                     )}
                   </div>
@@ -257,27 +281,27 @@ export default function Tenders() {
                         </div>
                       </div>
                     ) : (
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-700 border-b pb-2 flex-1">
-                          <TrendingUp className="w-5 h-5" />
-                          הצעת מחיר מבוססת היסטוריה
-                        </h3>
-                      </div>
-                      <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner mb-6 relative">
-                        <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
-                          {selectedTender.proposal.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
+                      <div>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-700 border-b pb-2 flex-1">
+                            <TrendingUp className="w-5 h-5" />
+                            הצעת מחיר מבוססת היסטוריה
+                          </h3>
                         </div>
-                        {selectedTender.proposal.includes('[CONFIDENCE]') && (
-                          <div className="mt-4 pt-4 border-t border-emerald-100 flex justify-end">
-                            {(() => {
-                              const conf = parseInt(selectedTender.proposal.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
-                              const color = conf > 80 ? 'text-emerald-600 bg-emerald-50' : conf > 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
-                              return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color} border border-current/20`}>וודאות הצעה: {conf}%</span>
-                            })()}
+                        <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner mb-6">
+                          <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
+                            {selectedTender.proposal.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
                           </div>
-                        )}
-                      </div>
+                          {selectedTender.proposal.includes('[CONFIDENCE]') && (
+                            <div className="mt-4 pt-4 border-t border-emerald-100 flex justify-end">
+                              {(() => {
+                                const conf = parseInt(selectedTender.proposal.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                                const color = conf > 80 ? 'text-emerald-600 bg-emerald-50' : conf > 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
+                                return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color} border border-current/20`}>וודאות הצעה: {conf}%</span>
+                              })()}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                     
