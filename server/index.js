@@ -123,13 +123,26 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
     const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
     const tenderId = info.lastInsertRowid;
     
-    // הפעלה אסינכרונית של הניתוח
-    analyzeTender(req.file.path, tenderId).then(analysis => {
+    // הפעלה אסינכרונית של הניתוח הדו-שלבי
+    const onPhaseOneComplete = (quickAnalysis) => {
+      // שמירת ניתוח ראשוני מהיר - המשתמש כבר רואה תוצאה!
+      db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?')
+        .run(quickAnalysis, 'נותח (ראשוני)', tenderId);
+      console.log(`⚡ Phase 1 quick analysis saved for tender ${tenderId}`);
+    };
+
+    analyzeTender(req.file.path, tenderId, onPhaseOneComplete).then(analysis => {
+      // שמירת הניתוח המלא והעמוק
       db.prepare('UPDATE tenders SET analysis = ?, status = ? WHERE id = ?').run(analysis, 'נותח', tenderId);
       ingestDocument('global', req.file.path).catch(e => console.error('Global ingest failed:', e));
+      console.log(`✅ Phase 2 deep analysis saved for tender ${tenderId}`);
     }).catch(err => {
       console.error('AI Analysis failed for tender:', tenderId, err);
-      db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId);
+      // אם יש ניתוח ראשוני (משלב 1), לא מציגים שגיאה
+      const existing = db.prepare('SELECT analysis FROM tenders WHERE id = ?').get(tenderId);
+      if (!existing?.analysis) {
+        db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId);
+      }
     });
 
     res.status(201).json({ id: tenderId });

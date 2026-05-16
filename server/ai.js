@@ -92,58 +92,65 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
   }
 };
 
-export const analyzeTender = async (filePath, tenderId) => {
-  // Claude קודם - מהיר ויציב. Gemini כגיבוי בלבד.
+// ניתוח דו-שלבי: שלב 1 מהיר (Haiku ~4 שניות) → שלב 2 עמוק (Sonnet ~15 שניות)
+// המשתמש רואה תוצאה ראשונית מהר, ואז התוצאה מתעדכנת לעומק
+export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   updateLiveStatus(tenderId, "קורא את מסמך המכרז...");
   
+  let pdfText;
   try {
-    const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
-    const truncatedText = pdfText.slice(0, 15000); // מגביל ל-15K תווים כדי לא לחרוג ממגבלת Claude
-    
-    updateLiveStatus(tenderId, "ברבור מנתח תנאי סף, לוחות זמנים וקנסות...");
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+    pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+  } catch (e) {
+    throw new Error(`Failed to read PDF: ${e.message}`);
+  }
+  
+  const shortText = pdfText.slice(0, 4000);  // לשלב 1 - רק 4K תווים
+  const fullText = pdfText.slice(0, 15000);  // לשלב 2 - 15K תווים
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // --- שלב 1: ניתוח מהיר עם claude-haiku (3-5 שניות) ---
+  updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח...");
+  let quickAnalysis = null;
+  try {
+    const quickResponse = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 800,
+      messages: [{ role: "user", content: `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
+[CONFIDENCE]70[/CONFIDENCE]
+
+מסמך:
+${shortText}` }]
+    });
+    quickAnalysis = quickResponse.content[0].text;
+    // מחזירים את הניתוח המהיר כבר עכשיו כדי שהמשתמש יראה משהו
+    if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
+    updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט...");
+  } catch (e) {
+    console.warn('Phase 1 quick analysis failed:', e.message);
+    updateLiveStatus(tenderId, "מנתח את המכרז...");
+  }
+
+  // --- שלב 2: ניתוח עמוק עם claude-sonnet (10-15 שניות) ---
+  try {
+    const deepResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
       max_tokens: 2500,
-      messages: [{ 
-        role: "user", 
-        content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח. 
+      messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח. 
 חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
 מסמך המכרז:
-${truncatedText}` 
-      }]
+${fullText}` }]
     });
     updateLiveStatus(tenderId, "ניתוח הושלם");
-    return response.content[0].text;
-  } catch (claudeErr) {
-    console.warn("Claude failed for analyzeTender, trying Gemini:", claudeErr.message);
-    try {
-      // Gemini כגיבוי - מנסה להעלות את ה-PDF ישירות
-      updateLiveStatus(tenderId, "מנסה ניתוח חלופי...");
-      const { genAI, fileManager } = getGeminiClients();
-      const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
-      let file = await fileManager.getFile(upload.file.name);
-      let waitCount = 0;
-      while (file.state === "PROCESSING" && waitCount < 10) {
-        await new Promise(r => setTimeout(r, 2000));
-        file = await fileManager.getFile(upload.file.name);
-        waitCount++;
-      }
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-      const result = await Promise.race([
-        model.generateContent([
-          { fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } },
-          { text: "נתח את המכרז לעומק בעברית. כלול תנאי סף, לוחות זמנים וקנסות. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]." }
-        ]),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 30000))
-      ]);
-      updateLiveStatus(tenderId, "ניתוח הושלם");
-      return result.response.text();
-    } catch (geminiErr) {
-      console.error("Both Claude and Gemini failed:", geminiErr.message);
-      throw geminiErr;
+    return deepResponse.content[0].text;
+  } catch (sonnetErr) {
+    console.warn('Phase 2 deep analysis failed, returning phase 1 result:', sonnetErr.message);
+    // אם שלב 2 נכשל, מחזירים את שלב 1 (שהוא כבר שמור)
+    if (quickAnalysis) {
+      updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
+      return quickAnalysis;
     }
+    throw sonnetErr;
   }
 };
 

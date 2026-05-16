@@ -47,7 +47,6 @@ export default function Tenders() {
       const interval = setInterval(async () => {
         const data = await api.getTenders();
         setTenders(data);
-        // עדכון המכרז הנבחר אם הוא מה שמתעדכן
         setSelectedTender(prev => prev ? data.find(t => t.id === prev.id) || prev : null);
       }, 3000);
       return () => clearInterval(interval);
@@ -208,6 +207,13 @@ export default function Tenders() {
                   <div className="prose prose-sm max-w-none text-text-primary bg-blue-50/30 p-4 rounded-xl border border-blue-100 leading-relaxed whitespace-pre-wrap relative">
                     {selectedTender.analysis ? (
                       <>
+                        {/* באנר שלב 1 - מוצג כשהניתוח העמוק עדיין רץ */}
+                        {selectedTender.status === 'נותח (ראשוני)' && (
+                          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                            <span><strong>ניתוח ראשוני מוכן.</strong> ברבור מעמיק את הנתונים ברקע — הדף יתעדכן אוטומטית.‏</span>
+                          </div>
+                        )}
                         {selectedTender.analysis.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
                         {selectedTender.analysis.includes('[CONFIDENCE]') && (
                           <div className="mt-4 pt-4 border-t border-blue-100 flex justify-end">
