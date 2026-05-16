@@ -77,7 +77,7 @@ export const analyzeTender = async (filePath, tenderId) => {
     const { genAI, fileManager } = getGeminiClients();
     const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "Tender" });
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. בסוף הניתוח, הוסף שורה: 'מדד ביטחון ניתוח: XX%' על בסיס איכות הטקסט במסמך." }]);
+    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "נתח את המכרז לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח." }]);
     updateLiveStatus(tenderId, "ניתוח הושלם");
     return result.response.text();
   } catch (err) {
@@ -88,7 +88,7 @@ export const analyzeTender = async (filePath, tenderId) => {
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
-        messages: [{ role: "user", content: `נתח את המכרז הבא לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. בסוף הניתוח, הוסף שורה: 'מדד ביטחון ניתוח: XX%' על בסיס איכות הטקסט במסמך.\n\nהמכרז:\n${pdfText}` }]
+        messages: [{ role: "user", content: `נתח את המכרז הבא לעומק בעברית. כלול סעיפים של תנאי סף, לוחות זמנים, וקנסות. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] כאשר XX הוא מספר מ-1 עד 100 המייצג את רמת הוודאות שלך בניתוח.\n\nהמכרז:\n${pdfText}` }]
       });
       updateLiveStatus(tenderId, "ניתוח הושלם (באמצעות Claude)");
       return response.content[0].text;
@@ -108,7 +108,7 @@ export const generateProposal = async (filePath, tenderId) => {
   try {
     const { genAI } = getGeminiClients();
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent(`הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית.`);
+    const result = await model.generateContent(`הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]`);
     updateLiveStatus(tenderId, "הצעה מוכנה");
     return result.response.text();
   } catch (err) {
@@ -118,7 +118,7 @@ export const generateProposal = async (filePath, tenderId) => {
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
-        messages: [{ role: "user", content: `הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית.` }]
+        messages: [{ role: "user", content: `הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]` }]
       });
       updateLiveStatus(tenderId, "הצעה מוכנה (באמצעות Claude)");
       return response.content[0].text;
@@ -136,7 +136,7 @@ export const askQuestion = async (projectId, question) => {
   try {
     const { genAI } = getGeminiClients();
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית.`);
+    const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] המייצגת את רמת הוודאות שלך בתשובה (מ-1 עד 100).`);
     return result.response.text();
   } catch (err) {
     console.warn("Gemini failed, falling back to Claude for askQuestion:", err);
@@ -145,7 +145,7 @@ export const askQuestion = async (projectId, question) => {
       const response = await anthropic.messages.create({
         model: "claude-3-haiku-20240307",
         max_tokens: 1000,
-        messages: [{ role: "user", content: `ענה על: ${question}. הקשר: ${context}. ענה בעברית.` }]
+        messages: [{ role: "user", content: `ענה על: ${question}. הקשר: ${context}. ענה בעברית. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] המייצגת את רמת הוודאות שלך בתשובה (מ-1 עד 100).` }]
       });
       return response.content[0].text;
     } catch (claudeErr) {
@@ -159,7 +159,7 @@ export const analyzeReceipt = async (filePath, mimeType) => {
     const { fileManager, genAI } = getGeminiClients();
     const upload = await fileManager.uploadFile(filePath, { mimeType, displayName: "Receipt" });
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "חלץ נתוני קבלה ל-JSON." }]);
+    const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "חלץ נתוני קבלה ל-JSON. חובה לכלול בשדה 'confidence' מספר מ-1 עד 100." }]);
     return JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
   } catch (e) {
     console.error("Receipt analysis failed:", e);
