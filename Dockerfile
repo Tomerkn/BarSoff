@@ -1,8 +1,8 @@
 # Stage 1: Frontend build
-FROM node:20-slim AS frontend-build
+FROM node:24-slim AS frontend-build
 WORKDIR /app
 
-# Install full build-essential for native modules
+# Install full build-essential for native modules (SQLite requires it during npm install)
 RUN apt-get update && apt-get install -y \
     python3 \
     build-essential \
@@ -15,10 +15,10 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production
-FROM node:20-slim
+FROM node:24-slim
 WORKDIR /app
 
-# Runtime dependencies
+# Runtime dependencies for SQLite
 RUN apt-get update && apt-get install -y \
     python3 \
     build-essential \
