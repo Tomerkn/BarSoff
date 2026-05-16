@@ -10,17 +10,25 @@ if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 const dbPath = path.join(DB_DIR, 'barsuf.db');
 
 // סנכרון מהענן - מורידים את מסד הנתונים לפני הפעלה
-const storage = new Storage();
 const BUCKET_NAME = 'barsuf-media-storage-1777314059';
+let storage;
+
 try {
+  storage = new Storage();
   const bucket = storage.bucket(BUCKET_NAME);
   const file = bucket.file('barsuf.db');
-  if ((await file.exists())[0]) {
+  
+  // הגבלת זמן ל-5 שניות כדי למנוע היתקעות במקרה של בעיית הרשאות בענן
+  const checkExists = file.exists();
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout checking credentials/storage')), 5000));
+  
+  const [exists] = await Promise.race([checkExists, timeout]);
+  if (exists) {
     await file.download({ destination: dbPath });
     console.log('☁️ Database downloaded from Cloud Storage');
   }
 } catch (e) {
-  console.log('☁️ Starting fresh local DB (No Cloud Backup found or missing permissions)');
+  console.log('☁️ Starting fresh local DB (No Cloud Backup found or missing permissions):', e.message);
 }
 
 const db = new Database(dbPath);
@@ -28,8 +36,10 @@ const db = new Database(dbPath);
 // גיבוי אוטומטי לענן בכל שינוי
 db.backupToCloud = async () => {
   try {
-    await storage.bucket(BUCKET_NAME).upload(dbPath, { destination: 'barsuf.db' });
-  } catch (e) { console.error('Cloud backup failed:', e); }
+    if (storage) {
+      await storage.bucket(BUCKET_NAME).upload(dbPath, { destination: 'barsuf.db' });
+    }
+  } catch (e) { console.error('Cloud backup failed:', e.message); }
 };
 
 // הגדרות ביצועים של SQLite
