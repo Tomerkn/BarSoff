@@ -275,6 +275,113 @@ app.put('/api/warranty-tickets/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// ===== Tasks API (Gantt) =====
+app.get('/api/projects/:id/tasks', (req, res) => {
+  const tasks = db.prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY start_date ASC').all(req.params.id);
+  res.json(tasks);
+});
+
+app.post('/api/projects/:id/tasks', (req, res) => {
+  const { name, start_date, end_date, progress } = req.body;
+  const stmt = db.prepare('INSERT INTO tasks (project_id, name, start_date, end_date, progress) VALUES (?, ?, ?, ?, ?)');
+  const result = stmt.run(req.params.id, name, start_date, end_date, progress || 0);
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.put('/api/tasks/:id', (req, res) => {
+  const { name, start_date, end_date, progress } = req.body;
+  db.prepare('UPDATE tasks SET name = ?, start_date = ?, end_date = ?, progress = ? WHERE id = ?')
+    .run(name, start_date, end_date, progress || 0, req.params.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// ===== Monday.com Sync =====
+app.post('/api/projects/:id/sync-monday', async (req, res) => {
+  const { token, boardId } = req.body;
+  if (!token || !boardId) return res.status(400).json({ error: 'Missing token or boardId' });
+
+  try {
+    // שליפת פריטים מה-Monday API דרך GraphQL
+    const query = `query {
+      boards(ids: [${boardId}]) {
+        items_page(limit: 100) {
+          items {
+            id
+            name
+            column_values {
+              id
+              text
+              value
+            }
+          }
+        }
+      }
+    }`;
+
+    const mondayRes = await fetch('https://api.monday.com/v2', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token,
+        'API-Version': '2024-01'
+      },
+      body: JSON.stringify({ query })
+    });
+
+    const mondayData = await mondayRes.json();
+    
+    if (mondayData.errors) {
+      console.error('Monday API error:', mondayData.errors);
+      return res.status(400).json({ error: 'Monday API error: ' + mondayData.errors[0]?.message });
+    }
+
+    const items = mondayData?.data?.boards?.[0]?.items_page?.items || [];
+    if (items.length === 0) return res.status(404).json({ error: 'No items found on this board' });
+
+    // מחיקת הישנות ושמירת חדשות
+    db.prepare('DELETE FROM tasks WHERE project_id = ?').run(req.params.id);
+
+    const today = new Date().toISOString().split('T')[0];
+    let synced = 0;
+
+    for (const item of items) {
+      // חיפוש עמודות תאריך (timeline / date columns)
+      let startDate = today;
+      let endDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+      let progress = 0;
+
+      for (const col of item.column_values) {
+        try {
+          if (col.id === 'timeline' || col.id.includes('timeline')) {
+            const val = JSON.parse(col.value || '{}');
+            if (val.from) startDate = val.from;
+            if (val.to) endDate = val.to;
+          } else if (col.id === 'numbers' || col.id.includes('progress') || col.id.includes('percent')) {
+            progress = Math.min(100, Math.max(0, parseInt(col.text || '0')));
+          } else if (col.id === 'status' || col.id.includes('status')) {
+            if (col.text === 'Done' || col.text === 'סיים') progress = 100;
+            else if (col.text === 'Working on it' || col.text === 'בעבודה') progress = 50;
+          }
+        } catch (e) { /* עמודה לא רלוונטית */ }
+      }
+
+      db.prepare('INSERT INTO tasks (project_id, name, start_date, end_date, progress, monday_id) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(req.params.id, item.name, startDate, endDate, progress, item.id);
+      synced++;
+    }
+
+    res.json({ success: true, synced });
+  } catch (err) {
+    console.error('Monday sync failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/projects/:id/chat', async (req, res) => {
   try {
     const answer = await askQuestion(req.params.id, req.body.question);

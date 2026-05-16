@@ -142,6 +142,16 @@ db.exec(`
     open_date TEXT,
     close_date TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_date TEXT,
+    end_date TEXT,
+    progress INTEGER DEFAULT 0,
+    monday_id TEXT
+  );
 `);
 
 console.log('✅ Database Ready at:', dbPath);
