@@ -130,8 +130,8 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
 
 app.post('/api/tenders/:id/proposal', async (req, res) => {
   const tender = db.prepare('SELECT * FROM tenders WHERE id = ?').get(req.params.id);
-  generateProposal(path.join(UPLOADS_DIR, tender.filename), req.params.id).then(proposal => {
-    db.prepare('UPDATE tenders SET proposal = ?, status = ? WHERE id = ?').run(proposal, 'מוכן', req.params.id);
+  generateProposal(path.join(UPLOADS_DIR, tender.filename), req.params.id).then(({ proposal, boq_json }) => {
+    db.prepare('UPDATE tenders SET proposal = ?, boq_json = ?, status = ? WHERE id = ?').run(proposal, boq_json, 'מוכן', req.params.id);
   }).catch(e => db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', req.params.id));
   res.json({ success: true });
 });

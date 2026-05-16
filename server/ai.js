@@ -100,17 +100,34 @@ export const analyzeTender = async (filePath, tenderId) => {
 };
 
 export const generateProposal = async (filePath, tenderId) => {
-  updateLiveStatus(tenderId, "מכין הצעה...");
+  updateLiveStatus(tenderId, "מכין הצעה וכתב כמויות...");
   const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
   const matches = await vectorStore.search(queryEmbedding, 10);
   const context = matches.map(m => m.text).join('\n---\n');
   
+  const prompt = `הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]. בנוסף, חובה לכלול בלוק JSON המייצג כתב כמויות (BoQ) במבנה הבא (אל תשים טקסט אחר בתוך הבלוק):
+\`\`\`json
+[
+  { "id": 1, "section": "שם סעיף (למשל עבודות גמר)", "item": "תיאור מדויק", "quantity": 100, "unit": "יחידת מידה", "unitPrice": 150 }
+]
+\`\`\``;
+
+  const extractResult = (text) => {
+    let boq_json = null;
+    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+    if (jsonMatch) {
+      try { boq_json = jsonMatch[1].trim(); } catch (e) {}
+      text = text.replace(jsonMatch[0], '');
+    }
+    return { proposal: text.trim(), boq_json };
+  };
+
   try {
     const { genAI } = getGeminiClients();
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-    const result = await model.generateContent(`הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]`);
+    const result = await model.generateContent(prompt);
     updateLiveStatus(tenderId, "הצעה מוכנה");
-    return result.response.text();
+    return extractResult(result.response.text());
   } catch (err) {
     console.warn("Gemini failed, falling back to Claude for generateProposal:", err);
     try {
@@ -118,10 +135,10 @@ export const generateProposal = async (filePath, tenderId) => {
       const response = await anthropic.messages.create({
         model: "claude-3-5-sonnet-20241022",
         max_tokens: 2000,
-        messages: [{ role: "user", content: `הכן הצעת מחיר על בסיס ההיסטוריה: ${context}. ענה בעברית. חובה לסיים את ההצעה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE]` }]
+        messages: [{ role: "user", content: prompt }]
       });
       updateLiveStatus(tenderId, "הצעה מוכנה (באמצעות Claude)");
-      return response.content[0].text;
+      return extractResult(response.content[0].text);
     } catch (claudeErr) {
       throw claudeErr;
     }

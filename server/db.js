@@ -80,7 +80,8 @@ db.exec(`
     upload_date TEXT,
     status TEXT,
     analysis TEXT,
-    proposal TEXT
+    proposal TEXT,
+    boq_json TEXT
   );
 
   CREATE TABLE IF NOT EXISTS contractors (

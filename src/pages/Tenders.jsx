@@ -4,6 +4,7 @@ import {
   FileSearch, Upload, Plus, Clock, CheckCircle, AlertCircle, 
   FileText, Download, BrainCircuit, TrendingUp, Search, Loader2, ChevronRight 
 } from 'lucide-react'; // אוסף האייקונים היפים שמעצבים את הדף
+import { TargetPriceCalculator } from '../components/ui/TargetPriceCalculator';
 
 export default function Tenders() {
   // --- המשתנים של הדף (הזיכרון המקומי של המסך) ---
@@ -202,18 +203,28 @@ export default function Tenders() {
 
                 {/* אזור הצעת המחיר (אם כבר הופקה) */}
                 {selectedTender.proposal && (
-                  <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-700 border-b pb-2 flex-1">
-                        <TrendingUp className="w-5 h-5" />
-                        הצעת מחיר וכתב כמויות מוצע (מבוסס היסטוריה)
-                      </h3>
-                    </div>
-                    <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner">
-                      <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
-                        {selectedTender.proposal}
+                  <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-700 border-b pb-2 flex-1">
+                          <TrendingUp className="w-5 h-5" />
+                          הצעת מחיר מבוססת היסטוריה
+                        </h3>
+                      </div>
+                      <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner mb-6">
+                        <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
+                          {selectedTender.proposal}
+                        </div>
                       </div>
                     </div>
+                    
+                    {/* מחשבון מחיר מטרה */}
+                    {selectedTender.boq_json && (
+                      <TargetPriceCalculator 
+                        tenderId={selectedTender.id} 
+                        initialBoqJson={selectedTender.boq_json} 
+                      />
+                    )}
                   </section>
                 )}
               </div>
