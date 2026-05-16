@@ -112,6 +112,9 @@ export function Sidebar({ isOpen, setIsOpen }) {
           <Settings className="w-5 h-5" />
           הגדרות
         </button>
+        <div className="mt-2 px-3 text-[10px] text-text-muted font-medium tracking-tight">
+          BARSUF v1.0.4
+        </div>
       </div>
     </aside>
 
