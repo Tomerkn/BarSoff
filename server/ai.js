@@ -113,7 +113,7 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   let quickAnalysis = null;
   try {
     const quickResponse = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-3-haiku-20240307",
       max_tokens: 800,
       messages: [{ role: "user", content: `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
 [CONFIDENCE]70[/CONFIDENCE]
@@ -133,7 +133,7 @@ ${shortText}` }]
   // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
   try {
     const deepResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
+      model: "claude-3-5-sonnet-20241022",
       max_tokens: 3500,
       messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
 חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
