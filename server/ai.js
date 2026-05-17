@@ -106,36 +106,40 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   
   const shortText = pdfText.slice(0, 4000);  // לשלב 1 - רק 4K תווים
   const fullText = pdfText.slice(0, 15000);  // לשלב 2 - 15K תווים
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // --- שלב 1: ניתוח מהיר עם claude-haiku (3-5 שניות) ---
-  updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח...");
-  let quickAnalysis = null;
-  try {
-    const quickResponse = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 800,
-      messages: [{ role: "user", content: `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
+  // נבדוק האם יש מפתח של Claude. אם אין או שהוא ריק, נדלג ישר לגוגל ג'מיני.
+  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim() !== "") {
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+      // --- שלב 1: ניתוח מהיר עם claude-haiku (3-5 שניות) ---
+      updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח...");
+      let quickAnalysis = null;
+      try {
+        const quickResponse = await anthropic.messages.create({
+          model: "claude-3-haiku-20240307",
+          max_tokens: 800,
+          messages: [{ role: "user", content: `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
 [CONFIDENCE]70[/CONFIDENCE]
 
 מסמך:
 ${shortText}` }]
-    });
-    quickAnalysis = quickResponse.content[0].text;
-    // מחזירים את הניתוח המהיר כבר עכשיו כדי שהמשתמש יראה משהו
-    if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
-    updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט...");
-  } catch (e) {
-    console.warn('Phase 1 quick analysis failed:', e.message);
-    updateLiveStatus(tenderId, "מנתח את המכרז...");
-  }
+        });
+        quickAnalysis = quickResponse.content[0].text;
+        // מחזירים את הניתוח המהיר כבר עכשיו כדי שהמשתמש יראה משהו
+        if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
+        updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט...");
+      } catch (e) {
+        console.warn('Phase 1 quick analysis failed:', e.message);
+        updateLiveStatus(tenderId, "מנתח את המכרז...");
+      }
 
-  // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
-  try {
-    const deepResponse = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 3500,
-      messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+      // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
+      try {
+        const deepResponse = await anthropic.messages.create({
+          model: "claude-3-5-sonnet-20241022",
+          max_tokens: 3500,
+          messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
 חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
 בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
@@ -145,29 +149,74 @@ ${shortText}` }]
 
 מסמך המכרז:
 ${fullText}` }]
-    });
+        });
+        
+        const rawText = deepResponse.content[0].text;
+        // מפריד את בלוק ה-JSON מתוך הניתוח
+        let boq_json = null;
+        const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+        if (jsonMatch) {
+          try {
+            JSON.parse(jsonMatch[1].trim()); // בדיקה שה-JSON תקין
+            boq_json = jsonMatch[1].trim();
+          } catch (e) { console.warn('BoQ JSON parse failed in analysis:', e.message); }
+        }
+        const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
+        
+        updateLiveStatus(tenderId, "ניתוח הושלם");
+        return { analysis, boq_json };
+      } catch (sonnetErr) {
+        console.warn('Phase 2 deep analysis failed, returning phase 1 result:', sonnetErr.message);
+        if (quickAnalysis) {
+          updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
+          return { analysis: quickAnalysis, boq_json: null };
+        }
+        throw sonnetErr;
+      }
+    } catch (claudeGeneralErr) {
+      console.warn('Claude analysis failed completely, falling back to Gemini:', claudeGeneralErr.message);
+    }
+  } else {
+    console.log('ANTHROPIC_API_KEY is not defined, skipping to Gemini fallback.');
+  }
+
+  // --- גוגל ג'מיני כגיבוי מלא וחזק (Gemini 1.5 Pro/Flash) ---
+  updateLiveStatus(tenderId, "מנתח באמצעות גוגל ג'מיני...");
+  try {
+    const { genAI } = getGeminiClients();
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
-    const rawText = deepResponse.content[0].text;
-    // מפריד את בלוק ה-JSON מתוך הניתוח
+    const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
+
+בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
+\`\`\`json
+[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
+\`\`\`
+
+מסמך המכרז:
+${fullText}`;
+
+    const result = await model.generateContent(geminiPrompt);
+    const rawText = result.response.text();
+    
     let boq_json = null;
     const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
     if (jsonMatch) {
       try {
-        JSON.parse(jsonMatch[1].trim()); // בדיקה שה-JSON תקין
+        JSON.parse(jsonMatch[1].trim());
         boq_json = jsonMatch[1].trim();
-      } catch (e) { console.warn('BoQ JSON parse failed in analysis:', e.message); }
+      } catch (e) { console.warn('BoQ JSON parse failed in Gemini:', e.message); }
     }
     const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
     
-    updateLiveStatus(tenderId, "ניתוח הושלם");
+    updateLiveStatus(tenderId, "ניתוח הושלם (ג'מיני)");
+    // אם הוגדר callback לשלב 1, נעדכן אותו עם התוצאה המלאה של ג'מיני כדי שהפרונט יציג אותה
+    if (onPhaseOneComplete) onPhaseOneComplete(analysis);
     return { analysis, boq_json };
-  } catch (sonnetErr) {
-    console.warn('Phase 2 deep analysis failed, returning phase 1 result:', sonnetErr.message);
-    if (quickAnalysis) {
-      updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
-      return { analysis: quickAnalysis, boq_json: null };
-    }
-    throw sonnetErr;
+  } catch (geminiErr) {
+    console.error('Both Claude and Gemini failed to analyze tender:', geminiErr);
+    throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: ${geminiErr.message}`);
   }
 };
 
@@ -202,6 +251,9 @@ ${truncatedText}
 [{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
 \`\`\``;
 
+    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.trim() === "") {
+      throw new Error("Missing ANTHROPIC_API_KEY");
+    }
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: "claude-3-5-sonnet-20241022",
@@ -266,6 +318,9 @@ export const askQuestion = async (projectId, question) => {
   } catch (err) {
     console.warn("Gemini failed, falling back to Claude for askQuestion:", err);
     try {
+      if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.trim() === "") {
+        throw new Error("Missing ANTHROPIC_API_KEY");
+      }
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
         model: "claude-3-haiku-20240307",
