@@ -131,11 +131,11 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
     try {
       const { genAI } = getGeminiClients();
 
-      // --- שלב 1: ניתוח מהיר עם gemini-1.5-flash ---
+      // --- שלב 1: ניתוח מהיר עם gemini-2.5-flash ---
       updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח (ג'מיני)...");
       let quickAnalysis = null;
       try {
-        const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const modelFlash = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const quickPrompt = `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
 [CONFIDENCE]70[/CONFIDENCE]
 
@@ -152,7 +152,7 @@ ${shortText}`;
 
       // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
       try {
-        const modelDeep = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const modelDeep = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
 חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
@@ -277,7 +277,7 @@ ${truncatedText}
 \`\`\``;
 
       const { genAI } = getGeminiClients();
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
       const result = await Promise.race([
         model.generateContent(fallbackPrompt),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 30000))
@@ -354,7 +354,7 @@ export const askQuestion = async (projectId, question) => {
   
   try {
     const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] המייצגת את רמת הוודאות שלך בתשובה (מ-1 עד 100).`);
     return result.response.text();
   } catch (err) {
@@ -380,7 +380,7 @@ export const analyzeReceipt = async (filePath, mimeType) => {
   try {
     const { fileManager, genAI } = getGeminiClients();
     const upload = await fileManager.uploadFile(filePath, { mimeType, displayName: "Receipt" });
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: "חלץ נתוני קבלה ל-JSON. חובה לכלול בשדה 'confidence' מספר מ-1 עד 100." }]);
     return JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
   } catch (e) {
