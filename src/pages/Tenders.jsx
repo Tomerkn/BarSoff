@@ -312,8 +312,6 @@ export default function Tenders() {
                     )}
                   </section>
                 )}
-              </div>
-            </div>
 
                 {/* מחשבון מחיר מטרה — מופיע מיד אחרי הניתוח, גם בלי הצעה */}
                 {selectedTender.boq_json && (
@@ -337,6 +335,7 @@ export default function Tenders() {
                     )}
                   </section>
                 )}
+              </div>
             </div>
           ) : (
             // מסך ריק שמופיע כשעדיין לא נבחר מכרז מהרשימה
