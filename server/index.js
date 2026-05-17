@@ -159,11 +159,9 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
       console.log(`✅ Phase 2 deep analysis + BoQ saved for tender ${tenderId}, boq: ${boq_json ? 'yes' : 'none'}`);
     }).catch(err => {
       console.error('AI Analysis failed for tender:', tenderId, err);
-      // אם יש ניתוח ראשוני (משלב 1), לא מציגים שגיאה
-      const existing = db.prepare('SELECT analysis FROM tenders WHERE id = ?').get(tenderId);
-      if (!existing?.analysis) {
-        db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', tenderId);
-      }
+      // שמירת השגיאה המדויקת בבסיס הנתונים לצרכי דיבאג בענן
+      const errorMsg = `שגיאה בניתוח המכרז: ${err.message}\n${err.stack || ''}`;
+      db.prepare('UPDATE tenders SET status = ?, analysis = ? WHERE id = ?').run('שגיאה', errorMsg, tenderId);
     });
 
     res.status(201).json({ id: tenderId });
