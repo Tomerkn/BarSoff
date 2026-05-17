@@ -8,6 +8,25 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
+const parsePDFText = async (filePath) => {
+  const buffer = fs.readFileSync(filePath);
+  if (pdfParse && pdfParse.PDFParse) {
+    const uint8 = new Uint8Array(buffer);
+    const parser = new pdfParse.PDFParse(uint8);
+    const result = await parser.getText();
+    return result.text || "";
+  }
+  if (typeof pdfParse === 'function') {
+    const result = await pdfParse(buffer);
+    return result.text || "";
+  }
+  if (pdfParse && typeof pdfParse.default === 'function') {
+    const result = await pdfParse.default(buffer);
+    return result.text || "";
+  }
+  throw new Error("Unable to determine PDF parsing library interface");
+};
+
 // משתמשים ב-/tmp לכתיבה בענן
 const CACHE_DIR = '/tmp/barsuf_data/ai_cache';
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -65,8 +84,8 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
     } catch (e) { console.warn('GCS Upload in ingest failed, continuing with local embedding:', e.message); }
 
     if (mimeType === 'application/pdf') {
-      const data = await pdfParse(fs.readFileSync(filePath));
-      const chunks = data.text.match(/[\s\S]{1,1500}/g) || []; // צ'אנקים גדולים יותר כדי להקטין כמות קריאות
+      const pdfText = await parsePDFText(filePath);
+      const chunks = pdfText.match(/[\s\S]{1,1500}/g) || []; // צ'אנקים גדולים יותר כדי להקטין כמות קריאות
       console.log(`📄 PDF parsed into ${chunks.length} chunks. Starting embedding...`);
       
       // איסוף כל ה-embeddings בצורה יעילה יותר
@@ -99,7 +118,7 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   
   let pdfText;
   try {
-    pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+    pdfText = await parsePDFText(filePath);
   } catch (e) {
     throw new Error(`Failed to read PDF: ${e.message}`);
   }
@@ -225,7 +244,7 @@ export const generateProposal = async (filePath, tenderId) => {
   updateLiveStatus(tenderId, "מחלץ נתוני מכרז...");
   
   try {
-    const pdfText = (await pdfParse(fs.readFileSync(filePath))).text;
+    const pdfText = await parsePDFText(filePath);
     const truncatedText = pdfText.slice(0, 12000);
     
     updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי...");
