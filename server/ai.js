@@ -111,7 +111,7 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
   }
 };
 
-// ניתוח דו-שלבי: שלב 1 מהיר (Haiku ~4 שניות) → שלב 2 עמוק (Sonnet ~15 שניות)
+// ניתוח דו-שלבי: שלב 1 מהיר (Gemini Flash ~1.5 שניות) → שלב 2 עמוק (Gemini Pro/Flash ~10 שניות)
 // המשתמש רואה תוצאה ראשונית מהר, ואז התוצאה מתעדכנת לעומק
 export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   updateLiveStatus(tenderId, "קורא את מסמך המכרז...");
@@ -126,86 +126,34 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   const shortText = pdfText.slice(0, 4000);  // לשלב 1 - רק 4K תווים
   const fullText = pdfText.slice(0, 15000);  // לשלב 2 - 15K תווים
 
-  // נבדוק האם יש מפתח של Claude. אם אין או שהוא ריק, נדלג ישר לגוגל ג'מיני.
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim() !== "") {
+  // --- גוגל ג'מיני כספק ראשי (Primary Engine) ---
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "") {
     try {
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const { genAI } = getGeminiClients();
 
-      // --- שלב 1: ניתוח מהיר עם claude-haiku (3-5 שניות) ---
-      updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח...");
+      // --- שלב 1: ניתוח מהיר עם gemini-1.5-flash ---
+      updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח (ג'מיני)...");
       let quickAnalysis = null;
       try {
-        const quickResponse = await anthropic.messages.create({
-          model: "claude-3-haiku-20240307",
-          max_tokens: 800,
-          messages: [{ role: "user", content: `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
+        const modelFlash = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const quickPrompt = `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
 [CONFIDENCE]70[/CONFIDENCE]
 
 מסמך:
-${shortText}` }]
-        });
-        quickAnalysis = quickResponse.content[0].text;
-        // מחזירים את הניתוח המהיר כבר עכשיו כדי שהמשתמש יראה משהו
+${shortText}`;
+        const quickResult = await modelFlash.generateContent(quickPrompt);
+        quickAnalysis = quickResult.response.text();
         if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
-        updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט...");
+        updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט (ג'מיני)...");
       } catch (e) {
-        console.warn('Phase 1 quick analysis failed:', e.message);
-        updateLiveStatus(tenderId, "מנתח את המכרז...");
+        console.warn('Gemini Phase 1 quick analysis failed:', e.message);
+        updateLiveStatus(tenderId, "מנתח את המכרז (ג'מיני)...");
       }
 
       // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
       try {
-        const deepResponse = await anthropic.messages.create({
-          model: "claude-3-5-sonnet-20241022",
-          max_tokens: 3500,
-          messages: [{ role: "user", content: `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
-חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
-
-בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
-\`\`\`json
-[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
-\`\`\`
-
-מסמך המכרז:
-${fullText}` }]
-        });
-        
-        const rawText = deepResponse.content[0].text;
-        // מפריד את בלוק ה-JSON מתוך הניתוח
-        let boq_json = null;
-        const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch) {
-          try {
-            JSON.parse(jsonMatch[1].trim()); // בדיקה שה-JSON תקין
-            boq_json = jsonMatch[1].trim();
-          } catch (e) { console.warn('BoQ JSON parse failed in analysis:', e.message); }
-        }
-        const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
-        
-        updateLiveStatus(tenderId, "ניתוח הושלם");
-        return { analysis, boq_json };
-      } catch (sonnetErr) {
-        console.warn('Phase 2 deep analysis failed, returning phase 1 result:', sonnetErr.message);
-        if (quickAnalysis) {
-          updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
-          return { analysis: quickAnalysis, boq_json: null };
-        }
-        throw sonnetErr;
-      }
-    } catch (claudeGeneralErr) {
-      console.warn('Claude analysis failed completely, falling back to Gemini:', claudeGeneralErr.message);
-    }
-  } else {
-    console.log('ANTHROPIC_API_KEY is not defined, skipping to Gemini fallback.');
-  }
-
-  // --- גוגל ג'מיני כגיבוי מלא וחזק (Gemini 1.5 Pro/Flash) ---
-  updateLiveStatus(tenderId, "מנתח באמצעות גוגל ג'מיני...");
-  try {
-    const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
-    const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+        const modelDeep = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
 חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
 בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
@@ -216,45 +164,103 @@ ${fullText}` }]
 מסמך המכרז:
 ${fullText}`;
 
-    const result = await model.generateContent(geminiPrompt);
-    const rawText = result.response.text();
-    
-    let boq_json = null;
-    const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch) {
-      try {
-        JSON.parse(jsonMatch[1].trim());
-        boq_json = jsonMatch[1].trim();
-      } catch (e) { console.warn('BoQ JSON parse failed in Gemini:', e.message); }
+        const deepResult = await modelDeep.generateContent(geminiPrompt);
+        const rawText = deepResult.response.text();
+
+        let boq_json = null;
+        const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+        if (jsonMatch) {
+          try {
+            JSON.parse(jsonMatch[1].trim());
+            boq_json = jsonMatch[1].trim();
+          } catch (e) { console.warn('BoQ JSON parse failed in Gemini analysis:', e.message); }
+        }
+        const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
+
+        updateLiveStatus(tenderId, "ניתוח הושלם");
+        return { analysis, boq_json };
+      } catch (geminiDeepErr) {
+        console.warn('Gemini Phase 2 deep analysis failed, returning phase 1 result:', geminiDeepErr.message);
+        if (quickAnalysis) {
+          updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
+          return { analysis: quickAnalysis, boq_json: null };
+        }
+        throw geminiDeepErr;
+      }
+    } catch (geminiGeneralErr) {
+      console.warn('Gemini analysis failed completely, falling back to Claude:', geminiGeneralErr.message);
     }
-    const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
-    
-    updateLiveStatus(tenderId, "ניתוח הושלם (ג'מיני)");
-    // אם הוגדר callback לשלב 1, נעדכן אותו עם התוצאה המלאה של ג'מיני כדי שהפרונט יציג אותה
-    if (onPhaseOneComplete) onPhaseOneComplete(analysis);
-    return { analysis, boq_json };
-  } catch (geminiErr) {
-    console.error('Both Claude and Gemini failed to analyze tender:', geminiErr);
-    throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: ${geminiErr.message}`);
+  } else {
+    console.log('GEMINI_API_KEY is not defined, skipping to Claude fallback.');
+  }
+
+  // --- אנתרופיק קלוד כגיבוי (Fallback Engine) ---
+  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim() !== "") {
+    updateLiveStatus(tenderId, "מנתח באמצעות קלוד...");
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const prompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
+
+בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
+\`\`\`json
+[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
+\`\`\`
+
+מסמך המכרז:
+${fullText}`;
+
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 3500,
+        messages: [{ role: "user", content: prompt }]
+      });
+
+      const rawText = response.content[0].text;
+      let boq_json = null;
+      const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        try {
+          JSON.parse(jsonMatch[1].trim());
+          boq_json = jsonMatch[1].trim();
+        } catch (e) { console.warn('BoQ JSON parse failed in Claude fallback:', e.message); }
+      }
+      const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
+
+      updateLiveStatus(tenderId, "ניתוח הושלם (קלוד)");
+      if (onPhaseOneComplete) onPhaseOneComplete(analysis);
+      return { analysis, boq_json };
+    } catch (claudeErr) {
+      console.error('Both Gemini and Claude failed to analyze tender:', claudeErr);
+      throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: ${claudeErr.message}`);
+    }
+  } else {
+    throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: Missing GEMINI_API_KEY and ANTHROPIC_API_KEY`);
   }
 };
 
 export const generateProposal = async (filePath, tenderId) => {
-  // Claude קודם - מהיר ויציב
   updateLiveStatus(tenderId, "מחלץ נתוני מכרז...");
   
+  let pdfText;
   try {
-    const pdfText = await parsePDFText(filePath);
-    const truncatedText = pdfText.slice(0, 12000);
-    
-    updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי...");
-    const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה, כתב כמויות");
-    const matches = await vectorStore.search(queryEmbedding, 8);
-    const context = matches.length > 0 ? matches.map(m => m.text).join('\n---\n') : "אין היסטוריית מחירים זמינה";
-    
-    updateLiveStatus(tenderId, "בונה כתב כמויות ומחשב מחיר מטרה...");
-    const prompt = `בהתבסס על מסמך המכרז ועל היסטוריית המחירים שלנו, הכן הצעת מחיר מפורטת בעברית.
-    
+    pdfText = await parsePDFText(filePath);
+  } catch (e) {
+    throw new Error(`Failed to read PDF: ${e.message}`);
+  }
+  const truncatedText = pdfText.slice(0, 12000);
+
+  // --- גוגל ג'מיני כספק ראשי (Primary Engine) ---
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "") {
+    try {
+      updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי (ג'מיני)...");
+      const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה, כתב כמויות");
+      const matches = await vectorStore.search(queryEmbedding, 10);
+      const context = matches.map(m => m.text).join('\n---\n');
+
+      updateLiveStatus(tenderId, "בונה כתב כמויות ומחשב מחיר מטרה (ג'מיני)...");
+      const fallbackPrompt = `הכן הצעת מחיר מבוססת על המכרז והיסטוריית מחירים בעברית.
+      
 היסטוריית מחירים:
 ${context}
 
@@ -270,57 +276,74 @@ ${truncatedText}
 [{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
 \`\`\``;
 
-    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.trim() === "") {
-      throw new Error("Missing ANTHROPIC_API_KEY");
-    }
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 3000,
-      messages: [{ role: "user", content: prompt }]
-    });
-    
-    updateLiveStatus(tenderId, "הצעה מוכנה");
-    const text = response.content[0].text;
-    let boq_json = null;
-    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-    if (jsonMatch) {
-      try { boq_json = jsonMatch[1].trim(); } catch (e) {}
-    }
-    return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
-    
-  } catch (claudeErr) {
-    console.warn("Claude failed for generateProposal, trying Gemini:", claudeErr.message);
-    try {
-      updateLiveStatus(tenderId, "מנסה שיטת גיבוי...");
-      const { genAI, fileManager } = getGeminiClients();
-      const upload = await fileManager.uploadFile(filePath, { mimeType: "application/pdf", displayName: "TenderForProposal" });
-      let file = await fileManager.getFile(upload.file.name);
-      let waitCount = 0;
-      while (file.state === "PROCESSING" && waitCount < 10) {
-        await new Promise(r => setTimeout(r, 2000));
-        file = await fileManager.getFile(upload.file.name);
-        waitCount++;
-      }
-      const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה");
-      const matches = await vectorStore.search(queryEmbedding, 10);
-      const context = matches.map(m => m.text).join('\n---\n');
-      const fallbackPrompt = `הכן הצעת מחיר מבוססת על המכרז המצורף והיסטוריה: ${context}. ענה בעברית. סיים עם [CONFIDENCE]XX[/CONFIDENCE] ובלוק JSON של BoQ.`;
+      const { genAI } = getGeminiClients();
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
       const result = await Promise.race([
-        model.generateContent([{ fileData: { mimeType: upload.file.mimeType, fileUri: upload.file.uri } }, { text: fallbackPrompt }]),
+        model.generateContent(fallbackPrompt),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 30000))
       ]);
+
       updateLiveStatus(tenderId, "הצעה מוכנה");
       const text = result.response.text();
       let boq_json = null;
       const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch) { try { boq_json = jsonMatch[1].trim(); } catch (e) {} }
+      if (jsonMatch) {
+        try { boq_json = jsonMatch[1].trim(); } catch (e) {}
+      }
       return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
     } catch (geminiErr) {
-      console.error("Both Claude and Gemini failed for proposal:", geminiErr.message);
-      throw geminiErr;
+      console.warn("Gemini failed for generateProposal, trying Claude fallback:", geminiErr.message);
     }
+  } else {
+    console.log('GEMINI_API_KEY is not defined, skipping to Claude fallback.');
+  }
+
+  // --- אנתרופיק קלוד כגיבוי (Fallback Engine) ---
+  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim() !== "") {
+    try {
+      updateLiveStatus(tenderId, "מנסה שיטת גיבוי (קלוד)...");
+      const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה, כתב כמויות");
+      const matches = await vectorStore.search(queryEmbedding, 8);
+      const context = matches.length > 0 ? matches.map(m => m.text).join('\n---\n') : "אין היסטוריית מחירים זמינה";
+
+      const prompt = `בהתבסס על מסמך המכרז ועל היסטוריית המחירים שלנו, הכן הצעת מחיר מפורטת בעברית.
+      
+היסטוריית מחירים:
+${context}
+
+מסמך המכרז:
+${truncatedText}
+
+דרישות:
+1. הכן כתב כמויות (BoQ) מפורט
+2. השתמש במחירי יחידה מהיסטוריית המחירים שלנו
+3. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
+4. חובה לכלול בלוק JSON במבנה הזה:
+\`\`\`json
+[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
+\`\`\``;
+
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const response = await anthropic.messages.create({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 3000,
+        messages: [{ role: "user", content: prompt }]
+      });
+
+      updateLiveStatus(tenderId, "הצעה מוכנה (קלוד)");
+      const text = response.content[0].text;
+      let boq_json = null;
+      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        try { boq_json = jsonMatch[1].trim(); } catch (e) {}
+      }
+      return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
+    } catch (claudeErr) {
+      console.error("Both Gemini and Claude failed for proposal:", claudeErr.message);
+      throw claudeErr;
+    }
+  } else {
+    throw new Error("Both Gemini and Claude failed to generate proposal: Missing credentials");
   }
 };
 
