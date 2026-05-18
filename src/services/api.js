@@ -166,6 +166,13 @@ export const api = { // יצירת השליח שמדבר עם השרת
     if (!response.ok) throw new Error('נכשל בהפקת הצעת מחיר');
     return response.json();
   },
+  convertTenderToProject: async (tenderId) => {
+    const response = await fetch(`${API_BASE_URL}/tenders/${tenderId}/convert-to-project`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('נכשל בהעברת המכרז לפרויקטים');
+    return response.json();
+  },
   // העלאת קובץ לפרויקט (מסמכים, תמונות)
   uploadProjectFile: async (projectId, file) => {
     const formData = new FormData();

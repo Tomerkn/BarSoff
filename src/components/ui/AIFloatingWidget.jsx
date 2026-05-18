@@ -3,7 +3,7 @@ import Draggable from 'react-draggable'; // כלי שמאפשר לגרור את 
 import { Bot, X, Sparkles } from 'lucide-react'; // מביאים אייקונים יפים
 import { ProjectChat } from './ProjectChat'; // מביאים את רכיב הצ'אט עצמו
 
-export function AIFloatingWidget({ projectId }) { // הפונקציה של הבוט הצף
+export function AIFloatingWidget({ projectId, tenderId }) { // הפונקציה של הבוט הצף
   const [isOpen, setIsOpen] = useState(false); // האם הצ'אט פתוח עכשיו
   const [isVisible, setIsVisible] = useState(true); // האם בכלל רואים את הבוט על המסך
   const [isMobile, setIsMobile] = useState(false); // האם המשתמש גולש מהטלפון
@@ -16,7 +16,7 @@ export function AIFloatingWidget({ projectId }) { // הפונקציה של הב�
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  if (!projectId || !isVisible) return null; // אם אין פרויקט או שסגרנו את הבוט, לא מראים כלום
+  if ((!projectId && !tenderId) || !isVisible) return null; // אם אין פרויקט/מכרז או שסגרנו את הבוט, לא מראים כלום
 
   return (
     <div 
@@ -46,7 +46,7 @@ export function AIFloatingWidget({ projectId }) { // הפונקציה של הב�
           </div>
           <div className="flex-1 overflow-hidden relative">
             <div className="absolute inset-0">
-              <ProjectChat projectId={projectId} />
+              <ProjectChat projectId={projectId} tenderId={tenderId} />
             </div>
           </div>
         </div>

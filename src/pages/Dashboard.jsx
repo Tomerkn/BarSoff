@@ -2,13 +2,113 @@ import React, { useEffect, useState } from 'react'; // מביאים את הכל�
 import { useParams } from 'react-router-dom'; // כלי לקבלת מספר הפרויקט מהכתובת בדפדפן
 import { KpiCard } from '../components/ui/KpiCard'; // כרטיסי מידע עם מספרים גדולים
 import { ProgressBar } from '../components/ui/ProgressBar'; // פסי התקדמות
-import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2 } from 'lucide-react'; // אייקונים
+import { Wallet, TrendingUp, AlertTriangle, Percent, Loader2, FileSearch, Search, BrainCircuit } from 'lucide-react'; // אייקונים
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'; // כלים לציור גרפים
 import { api } from '../services/api'; // השליח שמדבר עם השרת
 import { AIFloatingWidget } from '../components/ui/AIFloatingWidget'; // הבוט הצף (ברבור)
 
 const formatCurrency = (value) => { // פונקציה שהופכת מספר לסכום כספי בשקלים
   return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(value);
+};
+
+const renderStyledTable = (table, key) => {
+  return (
+    <div key={`table-${key}`} className="my-6 overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+      <table className="w-full text-right border-collapse text-xs">
+        <thead>
+          <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+            {table.headers.map((header, idx) => (
+              <th key={idx} className="p-3 font-semibold text-slate-800 border-l border-slate-100 last:border-l-0">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {table.rows.map((row, rowIdx) => {
+            const isGroupHeader = row.filter(c => c !== '').length <= 2;
+            return (
+              <tr 
+                key={rowIdx} 
+                className={`hover:bg-slate-50/50 transition-colors ${isGroupHeader ? 'bg-slate-50/30' : ''}`}
+              >
+                {row.map((cell, cellIdx) => (
+                  <td 
+                    key={cellIdx} 
+                    className={`p-3 text-slate-700 border-l border-slate-100 last:border-l-0 ${isGroupHeader ? 'font-bold' : ''}`}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderCleanContentWithTables = (text) => {
+  if (!text) return null;
+  
+  const cleaned = text
+    .replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/gs, '')
+    .replace(/^\s*\*\s+/gm, '• ')
+    .replace(/\*/g, '')
+    .trim();
+    
+  const lines = cleaned.split('\n');
+  const elements = [];
+  let currentTable = null;
+  let textBuffer = [];
+  
+  const flushTextBuffer = (key) => {
+    if (textBuffer.length > 0) {
+      elements.push(
+        <div key={`text-${key}`} className="whitespace-pre-wrap leading-relaxed text-sm text-slate-600">
+          {textBuffer.join('\n')}
+        </div>
+      );
+      textBuffer = [];
+    }
+  };
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const isRow = line.startsWith('|') && line.endsWith('|') && line.split('|').length > 2;
+    
+    if (isRow) {
+      flushTextBuffer(i);
+      
+      const isSeparator = line.replace(/[:-\s|]/g, '') === '';
+      if (isSeparator) {
+        continue;
+      }
+      
+      const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+      
+      if (!currentTable) {
+        currentTable = { headers: cells, rows: [] };
+      } else {
+        currentTable.rows.push(cells);
+      }
+    } else {
+      if (currentTable) {
+        elements.push(renderStyledTable(currentTable, i));
+        currentTable = null;
+      }
+      textBuffer.push(lines[i]);
+    }
+  }
+  
+  flushTextBuffer(lines.length);
+  
+  if (currentTable) {
+    elements.push(renderStyledTable(currentTable, lines.length));
+  }
+  
+  return <div className="space-y-4">{elements}</div>;
 };
 
 export function Dashboard() { // דף הלוח בקרה (דשבורד) של הפרויקט
@@ -155,6 +255,79 @@ export function Dashboard() { // דף הלוח בקרה (דשבורד) של הפ
           </div>
         </div>
       </div>
+
+      {/* אזור ניתוח מכרז מקורי (אם קיים) */}
+      {project.analysis && (
+        <div className="mt-8 bg-surface border border-border rounded-xl p-6 shadow-sm space-y-6">
+          <div className="flex items-center justify-between border-b pb-3 border-border">
+            <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
+              <FileSearch className="w-5 h-5 text-[var(--color-brand)]" />
+              ניתוח מכרז ומקורות פרויקט
+            </h3>
+            {project.tender_id && (
+              <span className="text-xs text-text-muted bg-slate-100 px-2.5 py-1 rounded-lg">
+                הועבר ממכרז חכם (מזהה מכרז: {project.tender_id})
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* צד ימין: ניתוח המכרז */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-sm text-text-secondary flex items-center gap-1.5">
+                <Search className="w-4 h-4 text-blue-500" />
+                ניתוח מכרז חכם (ברבור)
+              </h4>
+              <div className="bg-blue-50/20 p-5 rounded-xl border border-blue-50 text-sm leading-relaxed whitespace-pre-wrap max-h-[350px] overflow-y-auto">
+                {project.analysis.includes('[CONFIDENCE]') && (
+                  <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-2 text-blue-700">
+                      <BrainCircuit className="w-4 h-4 text-blue-600 animate-pulse" />
+                      <span className="font-bold text-[11px]">מדד וודאות ניתוח:</span>
+                    </div>
+                    {(() => {
+                      const conf = parseInt(project.analysis.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                      const color = conf > 80 ? 'text-emerald-600 font-extrabold' : conf > 50 ? 'text-amber-600 font-extrabold' : 'text-red-600 font-extrabold';
+                      return <span className={`text-lg ${color}`}>{conf}%</span>;
+                    })()}
+                  </div>
+                )}
+                <div>{renderCleanContentWithTables(project.analysis)}</div>
+              </div>
+            </div>
+
+            {/* צד שמאל: הצעת המחיר מבוססת ההיסטוריה */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-sm text-text-secondary flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
+                אומדן והצעת מחיר היסטורית
+              </h4>
+              <div className="bg-emerald-50/20 p-5 rounded-xl border border-emerald-50 text-sm leading-relaxed whitespace-pre-wrap max-h-[350px] overflow-y-auto">
+                {project.proposal ? (
+                  <>
+                    {project.proposal.includes('[CONFIDENCE]') && (
+                      <div className="mb-4 p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-lg flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-2 text-emerald-700">
+                          <TrendingUp className="w-4 h-4 text-emerald-600 animate-pulse" />
+                          <span className="font-bold text-[11px]">מדד וודאות אומדן:</span>
+                        </div>
+                        {(() => {
+                          const conf = parseInt(project.proposal.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                          const color = conf > 80 ? 'text-emerald-600 font-extrabold' : conf > 50 ? 'text-amber-600 font-extrabold' : 'text-red-600 font-extrabold';
+                          return <span className={`text-lg ${color}`}>{conf}%</span>;
+                        })()}
+                      </div>
+                    )}
+                    <div>{renderCleanContentWithTables(project.proposal)}</div>
+                  </>
+                ) : (
+                  <p className="text-text-muted text-xs italic py-4 text-center">לא הופקה הצעת מחיר היסטורית עבור פרויקט זה.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* הבוט הצף של ברבור להתייעצות */}
       <AIFloatingWidget projectId={projectId} />

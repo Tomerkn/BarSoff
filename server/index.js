@@ -6,7 +6,7 @@ import fs from 'fs';
 import { Storage } from '@google-cloud/storage';
 import db from './db.js';
 import './seed.js';
-import { ingestDocument, askQuestion, analyzeReceipt, analyzeTender, generateProposal } from './ai.js';
+import { ingestDocument, askQuestion, analyzeReceipt, analyzeTender, generateProposal, vectorStore, VECTOR_DB_PATH } from './ai.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -18,7 +18,15 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
+  filename: (req, file, cb) => {
+    try {
+      // מולטר מפענח שמות קבצים כ-latin1 כברירת מחדל. אנחנו ממירים את התווים חזרה לבאפר בינארי ומפענחים כ-UTF-8 כדי לשחזר עברית תקינה!
+      file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    } catch (e) {
+      console.error('שגיאה בפענוח שם הקובץ מעברית:', e.message);
+    }
+    cb(null, `${Date.now()}-${file.originalname}`);
+  }
 });
 const upload = multer({ storage });
 
@@ -143,6 +151,11 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
     const info = insert.run(req.file.originalname, req.file.filename, new Date().toISOString(), 'מעלה...');
     const tenderId = info.lastInsertRowid;
     
+    // התחלת אינדוקס מסמך המכרז מיד בבסיס הנתונים הווקטורי במקביל ובצורה מהירה!
+    ingestDocument(`tender-${tenderId}`, req.file.path).catch(e => 
+      console.error(`Background RAG ingestion failed for tender-${tenderId}:`, e)
+    );
+
     // הפעלה אסינכרונית של הניתוח הדו-שלבי
     const onPhaseOneComplete = (quickAnalysis) => {
       // שמירת ניתוח ראשוני מהיר - המשתמש כבר רואה תוצאה!
@@ -155,7 +168,6 @@ app.post('/api/tenders', upload.single('file'), async (req, res) => {
       // שמירת הניתוח המלא + כתב כמויות ראשוני
       db.prepare('UPDATE tenders SET analysis = ?, boq_json = ?, status = ? WHERE id = ?')
         .run(analysis, boq_json, 'נותח', tenderId);
-      ingestDocument('global', req.file.path).catch(e => console.error('Global ingest failed:', e));
       console.log(`✅ Phase 2 deep analysis + BoQ saved for tender ${tenderId}, boq: ${boq_json ? 'yes' : 'none'}`);
     }).catch(err => {
       console.error('AI Analysis failed for tender:', tenderId, err);
@@ -177,6 +189,131 @@ app.post('/api/tenders/:id/proposal', async (req, res) => {
     db.prepare('UPDATE tenders SET proposal = ?, boq_json = ?, status = ? WHERE id = ?').run(proposal, boq_json, 'מוכן', req.params.id);
   }).catch(e => db.prepare('UPDATE tenders SET status = ? WHERE id = ?').run('שגיאה', req.params.id));
   res.json({ success: true });
+});
+
+app.post('/api/tenders/:id/convert-to-project', async (req, res) => {
+  const tenderId = Number(req.params.id);
+  console.log(`💼 Converting tender ${tenderId} to an active project...`);
+  
+  try {
+    const tender = db.prepare('SELECT * FROM tenders WHERE id = ?').get(tenderId);
+    if (!tender) {
+      return res.status(404).json({ error: 'Tender not found' });
+    }
+    
+    // 1. Create active project (strip extension from tender name)
+    const projectName = tender.name.replace(/\.[^/.]+$/, "");
+    const location = 'לא הוגדר';
+    // Default estimated completion: 6 months out
+    const endDate = new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
+    
+    const insertProject = db.prepare(`
+      INSERT INTO projects (name, location, end_date, status, tender_id, analysis, proposal, boq_json) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    const projectInfo = insertProject.run(
+      projectName, 
+      location, 
+      endDate, 
+      'תקין', 
+      tender.id, 
+      tender.analysis || '', 
+      tender.proposal || '', 
+      tender.boq_json || ''
+    );
+    const newProjectId = projectInfo.lastInsertRowid;
+    
+    // 2. Link file to project files (so it shows in documents page)
+    const insertFile = db.prepare('INSERT INTO files (project_id, filename, original_name, upload_date) VALUES (?, ?, ?, ?)');
+    insertFile.run(newProjectId, tender.filename, tender.name, new Date().toISOString());
+    
+    // 3. Populate budgets from BOQ JSON
+    if (tender.boq_json) {
+      try {
+        const boqItems = JSON.parse(tender.boq_json);
+        if (Array.isArray(boqItems)) {
+          const categoryTotals = {};
+          for (const item of boqItems) {
+            const category = item.section || 'כללי';
+            const qty = Number(item.quantity) || 0;
+            const price = Number(item.unitPrice) || 0;
+            const total = qty * price;
+            categoryTotals[category] = (categoryTotals[category] || 0) + total;
+          }
+          
+          const insertBudget = db.prepare('INSERT INTO budgets (project_id, category, total_amount) VALUES (?, ?, ?)');
+          for (const [category, total_amount] of Object.entries(categoryTotals)) {
+            insertBudget.run(newProjectId, category, total_amount);
+          }
+          console.log(`💰 Created budgets for ${newProjectId} from tender BOQ items`);
+        }
+      } catch (e) {
+        console.error('Failed to parse/convert BOQ JSON to budgets:', e);
+      }
+    }
+    
+    // 4. Update tender RAG chunk IDs to project ID in vector DB (instant!)
+    let updatedChunks = 0;
+    if (Array.isArray(vectorStore?.data)) {
+      vectorStore.data.forEach(item => {
+        if (item.metadata?.projectId === `tender-${tenderId}`) {
+          item.metadata.projectId = newProjectId.toString();
+          updatedChunks++;
+        }
+      });
+      if (updatedChunks > 0) {
+        fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(vectorStore.data));
+        console.log(`⚡ Re-indexed ${updatedChunks} chunks from tender-${tenderId} to project ${newProjectId}`);
+      }
+    }
+    
+    // Fallback: if no chunks were found (e.g. background ingest still running), run ingest
+    if (updatedChunks === 0) {
+      const filePath = path.join(UPLOADS_DIR, tender.filename);
+      ingestDocument(newProjectId, filePath).catch(e => {
+        console.error(`RAG Ingest failed for project ${newProjectId}:`, e);
+      });
+    }
+    
+    // 5. Delete tender as it has been successfully transferred
+    db.prepare('DELETE FROM tenders WHERE id = ?').run(tenderId);
+    
+    // Backup DB
+    db.backupToCloud().catch(e => console.error('Cloud backup failed:', e));
+    
+    res.json({ success: true, projectId: newProjectId });
+  } catch (err) {
+    console.error('Tender conversion failed:', err);
+    res.status(500).json({ error: 'Failed to convert tender to project', details: err.message });
+  }
+});
+
+app.get('/api/tenders/:id/files', (req, res) => {
+  const tenderId = Number(req.params.id);
+  const tender = db.prepare('SELECT * FROM tenders WHERE id = ?').get(tenderId);
+  if (!tender) return res.status(404).json({ error: 'Tender not found' });
+  res.json([{
+    id: tender.id,
+    original_name: tender.name,
+    filename: tender.filename,
+    upload_date: tender.upload_date,
+    url: `/uploads/${tender.filename}`
+  }]);
+});
+
+app.post('/api/tenders/:id/chat', async (req, res) => {
+  const tenderId = Number(req.params.id);
+  const { question } = req.body;
+  if (!question) return res.status(400).json({ error: 'Question is required' });
+  
+  try {
+    const answer = await askQuestion(`tender-${tenderId}`, question);
+    res.json({ answer });
+  } catch (e) {
+    console.error('Tender QA failed:', e);
+    res.status(500).json({ error: 'AI error during tender Q&A' });
+  }
 });
 
 // --- AI Aliases from old API ---

@@ -53,7 +53,11 @@ db.exec(`
     name TEXT NOT NULL,
     location TEXT,
     end_date TEXT,
-    status TEXT DEFAULT 'תקין'
+    status TEXT DEFAULT 'תקין',
+    tender_id INTEGER,
+    analysis TEXT,
+    proposal TEXT,
+    boq_json TEXT
   );
 
   CREATE TABLE IF NOT EXISTS budgets (
@@ -153,6 +157,12 @@ db.exec(`
     monday_id TEXT
   );
 `);
+
+// הוספת עמודות תומכות מכרז לפרויקט קיים במידה ולא קיימות (מיגרציה בזמן ריצה)
+try { db.exec(`ALTER TABLE projects ADD COLUMN tender_id INTEGER;`); } catch (e) {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN analysis TEXT;`); } catch (e) {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN proposal TEXT;`); } catch (e) {}
+try { db.exec(`ALTER TABLE projects ADD COLUMN boq_json TEXT;`); } catch (e) {}
 
 console.log('✅ Database Ready at:', dbPath);
 export default db;

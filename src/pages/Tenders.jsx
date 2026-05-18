@@ -1,10 +1,113 @@
 import React, { useState, useEffect } from 'react'; // הכלים הבסיסיים של ריאקט לבניית המסך
+import { Link } from 'react-router-dom'; // ניווט וקישורים
 import { api } from '../services/api'; // החיבור שלנו לשרת כדי לבקש נתונים
 import { 
   FileSearch, Upload, Plus, Clock, CheckCircle, AlertCircle, 
-  FileText, Download, BrainCircuit, TrendingUp, Search, Loader2, ChevronRight 
+  FileText, Download, BrainCircuit, TrendingUp, Search, Loader2, ChevronRight,
+  Trash2, Briefcase, ExternalLink
 } from 'lucide-react'; // אוסף האייקונים היפים שמעצבים את הדף
 import { TargetPriceCalculator } from '../components/ui/TargetPriceCalculator';
+import { AIFloatingWidget } from '../components/ui/AIFloatingWidget';
+
+const renderStyledTable = (table, key) => {
+  return (
+    <div key={`table-${key}`} className="my-6 overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+      <table className="w-full text-right border-collapse text-xs">
+        <thead>
+          <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+            {table.headers.map((header, idx) => (
+              <th key={idx} className="p-3 font-semibold text-slate-800 border-l border-slate-100 last:border-l-0">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {table.rows.map((row, rowIdx) => {
+            const isGroupHeader = row.filter(c => c !== '').length <= 2;
+            return (
+              <tr 
+                key={rowIdx} 
+                className={`hover:bg-slate-50/50 transition-colors ${isGroupHeader ? 'bg-slate-50/30' : ''}`}
+              >
+                {row.map((cell, cellIdx) => (
+                  <td 
+                    key={cellIdx} 
+                    className={`p-3 text-slate-700 border-l border-slate-100 last:border-l-0 ${isGroupHeader ? 'font-bold' : ''}`}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderCleanContentWithTables = (text) => {
+  if (!text) return null;
+  
+  const cleaned = text
+    .replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/gs, '')
+    .replace(/^\s*\*\s+/gm, '• ')
+    .replace(/\*/g, '')
+    .trim();
+    
+  const lines = cleaned.split('\n');
+  const elements = [];
+  let currentTable = null;
+  let textBuffer = [];
+  
+  const flushTextBuffer = (key) => {
+    if (textBuffer.length > 0) {
+      elements.push(
+        <div key={`text-${key}`} className="whitespace-pre-wrap leading-relaxed text-sm text-slate-600">
+          {textBuffer.join('\n')}
+        </div>
+      );
+      textBuffer = [];
+    }
+  };
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const isRow = line.startsWith('|') && line.endsWith('|') && line.split('|').length > 2;
+    
+    if (isRow) {
+      flushTextBuffer(i);
+      
+      const isSeparator = line.replace(/[:-\s|]/g, '') === '';
+      if (isSeparator) {
+        continue;
+      }
+      
+      const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+      
+      if (!currentTable) {
+        currentTable = { headers: cells, rows: [] };
+      } else {
+        currentTable.rows.push(cells);
+      }
+    } else {
+      if (currentTable) {
+        elements.push(renderStyledTable(currentTable, i));
+        currentTable = null;
+      }
+      textBuffer.push(lines[i]);
+    }
+  }
+  
+  flushTextBuffer(lines.length);
+  
+  if (currentTable) {
+    elements.push(renderStyledTable(currentTable, lines.length));
+  }
+  
+  return <div className="space-y-4">{elements}</div>;
+};
 
 export default function Tenders() {
   // --- המשתנים של הדף (הזיכרון המקומי של המסך) ---
@@ -13,6 +116,8 @@ export default function Tenders() {
   const [uploading, setUploading] = useState(false); // האם קובץ עולה עכשיו?
   const [selectedTender, setSelectedTender] = useState(null); // איזה מכרז המשתמש בחר לראות כרגע
   const [generating, setGenerating] = useState(false); // האם ברבור מייצר עכשיו הצעת מחיר?
+  const [converting, setConverting] = useState(false); // האם אנחנו באמצע העברה לפרויקט?
+  const [newProjectLink, setNewProjectLink] = useState(null); // קישור לפרויקט החדש שנוצר מהמכרז
   const [currentStep, setCurrentStep] = useState(0);
 
   const loadingSteps = [
@@ -75,6 +180,7 @@ export default function Tenders() {
     if (!file) return;
     
     setUploading(true); // מראים למשתמש שאנחנו עובדים
+    setNewProjectLink(null); // מאפסים קישור ישן
     try {
       await api.createTender(file); // שולחים את הקובץ לשרת
       await fetchTenders(); // מרעננים את הרשימה כדי לראות את המכרז החדש
@@ -88,6 +194,7 @@ export default function Tenders() {
   // הפקודה לברבור: "קח את המכרז הזה ותכין לי הצעה על בסיס העבר"
   const generateProposal = async (id) => {
     setGenerating(true);
+    setNewProjectLink(null);
     try {
       await api.generateTenderProposal(id); // הקסם קורה פה בשרת
       await fetchTenders(); // מרעננים נתונים
@@ -98,6 +205,40 @@ export default function Tenders() {
       alert('ברבור נתקע קצת ביצירת ההצעה, נסה שוב.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // מחיקת מכרז מהמערכת
+  const handleDeleteTender = async (id) => {
+    if (!window.confirm('האם אתה בטוח שברצונך להסיר מכרז זה מהרשימה?')) return;
+    try {
+      await api.deleteResource('tenders', id);
+      setSelectedTender(null);
+      await fetchTenders();
+    } catch (error) {
+      alert('לא הצלחנו למחוק את המכרז: ' + error.message);
+    }
+  };
+
+  // העברת מכרז לפרויקטים פעילים
+  const handleConvertToProject = async (id) => {
+    if (!window.confirm('האם ברצונך להעביר מכרז זה לפרויקטים הפעילים בחברה?\n\nפעולה זו תיצור פרויקט חדש המבוסס על המכרז, תגדיר סעיפי תקציב ראשוניים מתוך כתב הכמויות, ותעביר את הניתוח המלא והקובץ המקורי.')) return;
+    
+    setConverting(true);
+    setNewProjectLink(null);
+    try {
+      const result = await api.convertTenderToProject(id);
+      if (result.success && result.projectId) {
+        setNewProjectLink(`/projects/${result.projectId}`);
+        setSelectedTender(null);
+        await fetchTenders();
+      } else {
+        throw new Error('שגיאה במהלך העברת המכרז');
+      }
+    } catch (error) {
+      alert('נכשל בהעברת המכרז לפרויקט: ' + error.message);
+    } finally {
+      setConverting(false);
     }
   };
 
@@ -126,6 +267,26 @@ export default function Tenders() {
           </label>
         </div>
       </div>
+
+      {/* באנר הצלחה על העברה לפרויקט */}
+      {newProjectLink && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300 shadow-sm">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-bold text-sm">המכרז הועבר בהצלחה לפרויקטים הפעילים!</p>
+              <p className="text-xs text-emerald-700">כל הניתוחים החכמים, כתב הכמויות, אומדן התקציב וקובץ המכרז תועדו ונשמרו בהצלחה בפרויקט החדש.</p>
+            </div>
+          </div>
+          <Link 
+            to={newProjectLink} 
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition-colors shrink-0 shadow-sm"
+          >
+            <ExternalLink className="w-4 h-4" />
+            צפה בפרויקט החדש
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* צד ימין: רשימת המכרזים האחרונים */}
@@ -184,17 +345,42 @@ export default function Tenders() {
                     <p className="text-xs text-text-muted">מזהה פנימי: {selectedTender.id}</p>
                   </div>
                 </div>
-                {/* כפתור הפקת הצעה - מופיע רק אם המכרז כבר נותח אבל עדיין אין הצעה */}
-                {!selectedTender.proposal && selectedTender.status === 'נותח' && (
+                {/* כפתורי פעולה למכרז */}
+                <div className="flex items-center gap-3">
+                  {/* כפתור מחיקה */}
                   <button 
-                    onClick={() => generateProposal(selectedTender.id)}
-                    disabled={generating}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-sm"
+                    onClick={() => handleDeleteTender(selectedTender.id)}
+                    className="flex items-center gap-2 px-3.5 py-2 text-red-600 bg-red-50 hover:bg-red-100 hover:text-red-700 rounded-xl transition-all border border-red-100 font-bold text-xs"
+                    title="מחק מכרז לצמיתות"
                   >
-                    {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
-                    <span className="font-bold text-sm">הפקת הצעת מחיר אוטומטית</span>
+                    <Trash2 className="w-4 h-4" />
+                    <span>מחק מכרז</span>
                   </button>
-                )}
+
+                  {/* כפתור העברה לפרויקטים */}
+                  {selectedTender.analysis && (
+                    <button 
+                      onClick={() => handleConvertToProject(selectedTender.id)}
+                      disabled={converting}
+                      className="flex items-center gap-2 px-4 py-2 bg-[var(--color-brand)] text-white rounded-xl hover:bg-[#46a2aa] transition-all shadow-sm font-bold text-xs disabled:opacity-50"
+                    >
+                      {converting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Briefcase className="w-4 h-4" />}
+                      <span>העבר לפרויקטים שנותחו</span>
+                    </button>
+                  )}
+
+                  {/* כפתור הפקת הצעה - מופיע רק אם המכרז כבר נותח אבל עדיין אין הצעה */}
+                  {!selectedTender.proposal && selectedTender.status === 'נותח' && (
+                    <button 
+                      onClick={() => generateProposal(selectedTender.id)}
+                      disabled={generating}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-sm font-bold text-xs"
+                    >
+                      {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
+                      <span>הפקת הצעת מחיר אוטומטית</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="p-6 overflow-y-auto flex-1 space-y-8 bg-white/50">
@@ -214,16 +400,32 @@ export default function Tenders() {
                             <span><strong>ניתוח ראשוני מוכן.</strong> ברבור מעמיק את הנתונים ברקע — הדף יתעדכן אוטומטית.‏</span>
                           </div>
                         )}
-                        {selectedTender.analysis.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
                         {selectedTender.analysis.includes('[CONFIDENCE]') && (
-                          <div className="mt-4 pt-4 border-t border-blue-100 flex justify-end">
-                            {(() => {
-                              const conf = parseInt(selectedTender.analysis.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
-                              const color = conf > 80 ? 'text-emerald-600 bg-emerald-50' : conf > 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
-                              return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color} border border-current/20`}>וודאות ניתוח: {conf}%</span>
-                            })()}
+                          <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50/50 border border-blue-150 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in duration-300">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2.5 bg-white rounded-xl shadow-sm border border-blue-100 text-blue-600">
+                                <BrainCircuit className="w-5 h-5 text-blue-600 animate-pulse" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-sm text-slate-800">מדד וודאות ניתוח של ברבור</h4>
+                                <p className="text-xs text-slate-500">מידת הדיוק והביטחון של הניתוח החכם</p>
+                              </div>
+                            </div>
+                            <div className="flex items-baseline gap-1">
+                              {(() => {
+                                const conf = parseInt(selectedTender.analysis.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                                const color = conf > 80 ? 'text-emerald-600' : conf > 50 ? 'text-amber-600' : 'text-red-600';
+                                return (
+                                  <>
+                                    <span className={`text-3xl font-extrabold ${color}`}>{conf}</span>
+                                    <span className={`text-sm font-bold ${color}`}>%</span>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           </div>
                         )}
+                        <div className="whitespace-pre-wrap">{renderCleanContentWithTables(selectedTender.analysis)}</div>
                       </>
                     ) : selectedTender.status === 'שגיאה' ? (
                       // מצב שגיאה - מציג הודעה ברורה ולא טעינה
@@ -295,18 +497,34 @@ export default function Tenders() {
                           </h3>
                         </div>
                         <div className="bg-emerald-50/30 p-6 rounded-2xl border border-emerald-100 shadow-inner mb-6">
-                          <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
-                            {selectedTender.proposal.replace(/\[CONFIDENCE\].*?\[\/CONFIDENCE\]/s, '').trim()}
-                          </div>
                           {selectedTender.proposal.includes('[CONFIDENCE]') && (
-                            <div className="mt-4 pt-4 border-t border-emerald-100 flex justify-end">
-                              {(() => {
-                                const conf = parseInt(selectedTender.proposal.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
-                                const color = conf > 80 ? 'text-emerald-600 bg-emerald-50' : conf > 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50';
-                                return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color} border border-current/20`}>וודאות הצעה: {conf}%</span>
-                              })()}
+                            <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50 to-teal-50/50 border border-emerald-150 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in duration-300">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-white rounded-xl shadow-sm border border-emerald-100 text-emerald-600">
+                                  <TrendingUp className="w-5 h-5 text-emerald-600 animate-pulse" />
+                                </div>
+                                <div>
+                                  <h4 className="font-bold text-sm text-slate-800">מדד וודאות הצעה של ברבור</h4>
+                                  <p className="text-xs text-slate-500">מידת הדיוק בהערכת המחיר ההיסטורי</p>
+                                </div>
+                              </div>
+                              <div className="flex items-baseline gap-1">
+                                {(() => {
+                                  const conf = parseInt(selectedTender.proposal.match(/\[CONFIDENCE\](\d+)\[\/CONFIDENCE\]/)?.[1] || '0');
+                                  const color = conf > 80 ? 'text-emerald-600' : conf > 50 ? 'text-amber-600' : 'text-red-600';
+                                  return (
+                                    <>
+                                      <span className={`text-3xl font-extrabold ${color}`}>{conf}</span>
+                                      <span className={`text-sm font-bold ${color}`}>%</span>
+                                    </>
+                                  );
+                                })()}
+                              </div>
                             </div>
                           )}
+                          <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
+                            {renderCleanContentWithTables(selectedTender.proposal)}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -349,6 +567,11 @@ export default function Tenders() {
           )}
         </div>
       </div>
+
+      {/* הבוט הצף של ברבור להתייעצות לגבי המכרז */}
+      {selectedTender && (
+        <AIFloatingWidget tenderId={selectedTender.id} />
+      )}
     </div>
   );
 }

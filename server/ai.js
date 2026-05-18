@@ -30,7 +30,7 @@ const parsePDFText = async (filePath) => {
 const CACHE_DIR = '/tmp/barsuf_data/ai_cache';
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
-const VECTOR_DB_PATH = path.join(CACHE_DIR, 'vector_db.json');
+export const VECTOR_DB_PATH = path.join(CACHE_DIR, 'vector_db.json');
 
 const updateLiveStatus = (tenderId, statusMsg) => {
   try {
@@ -81,7 +81,7 @@ async function getEmbeddings(text) {
   } catch (e) { return null; }
 }
 
-const vectorStore = {
+export const vectorStore = {
   data: fs.existsSync(VECTOR_DB_PATH) ? JSON.parse(fs.readFileSync(VECTOR_DB_PATH)) : [],
   async addText(text, embedding, metadata) {
     this.data.push({ text, embedding, metadata });
@@ -110,25 +110,40 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
 
     if (mimeType === 'application/pdf') {
       const pdfText = await parsePDFText(filePath);
-      const chunks = pdfText.match(/[\s\S]{1,1500}/g) || []; // צ'אנקים גדולים יותר כדי להקטין כמות קריאות
-      console.log(`📄 PDF parsed into ${chunks.length} chunks. Starting embedding...`);
+      const chunks = pdfText.match(/[\s\S]{1,1500}/g) || []; // צ'אנקים
+      console.log(`📄 PDF parsed into ${chunks.length} chunks. Starting parallel embedding...`);
       
-      // איסוף כל ה-embeddings בצורה יעילה יותר
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        if (chunk.trim().length < 50) continue; // סעיפים קצרים מדי לא מעניינים
-        
-        const embedding = await getEmbeddings(chunk);
-        if (embedding) {
-          vectorStore.data.push({ text: chunk, embedding, metadata: { projectId, date: new Date().toISOString() } });
+      // איסוף כל ה-embeddings במקביל למהירות שיא של 1-2 שניות במקום חצי דקה!
+      const embeddingPromises = chunks.map(async (chunk) => {
+        if (chunk.trim().length < 50) return null;
+        try {
+          const embedding = await getEmbeddings(chunk);
+          return { chunk, embedding };
+        } catch (err) {
+          console.error(`Error embedding chunk: ${err.message}`);
+          return null;
         }
-        
-        // כתיבה לדיסק רק כל 10 צ'אנקים או בסוף
-        if (i % 10 === 0) fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(vectorStore.data));
+      });
+      
+      const results = await Promise.all(embeddingPromises);
+      
+      let addedCount = 0;
+      for (const res of results) {
+        if (res && res.embedding) {
+          vectorStore.data.push({ 
+            text: res.chunk, 
+            embedding: res.embedding, 
+            metadata: { projectId, date: new Date().toISOString() } 
+          });
+          addedCount++;
+        }
       }
-      fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(vectorStore.data));
+      
+      if (addedCount > 0) {
+        fs.writeFileSync(VECTOR_DB_PATH, JSON.stringify(vectorStore.data));
+      }
+      console.log(`✅ Ingestion complete for ${projectId}. Indexed ${addedCount} chunks.`);
     }
-    console.log(`✅ Ingestion complete for ${projectId}`);
     return true;
   } catch (e) { 
     console.error('❌ Ingest failed critical error:', e.message); 
@@ -249,8 +264,13 @@ ${truncatedText}
 1. הכן כתב כמויות (BoQ) מפורט
 2. השתמש במחירי יחידה מהיסטוריית המחירים שלנו
 3. חובה לכלול פרק מיוחד ומסודר בשם "שלבי ביצוע להצגה ללקוח" המפרט בצורה מונגשת, פשוטה וברורה לקורא הלא-מקצועי את שלבי העבודה השונים, כדי שנוכל להציג לו את זה בבהירות.
-4. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
-5. חובה לכלול בלוק JSON במבנה הזה:
+4. כאשר נדרש למלא את פרטי המציע, החברה המציעה, מורשה החתימה, תפקיד או חתימה וחותמת - חובה למלא תמיד את הפרטים הבאים בדיוק:
+   - שם המציע / החברה המציעה: ברסוף בע״מ
+   - שם מורשה חתימה: שמעון אזולאי
+   - תפקיד: מנכ״ל
+   - חתימה וחותמת החברה: שמעון אזולאי, מנכ״ל - ברסוף בע״מ
+5. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
+6. חובה לכלול בלוק JSON במבנה הזה:
 \`\`\`json
 [{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
 \`\`\``;
@@ -277,7 +297,21 @@ ${truncatedText}
 
 export const askQuestion = async (projectId, question) => {
   const queryEmbedding = await getEmbeddings(question);
-  const matches = await vectorStore.search(queryEmbedding, 5);
+  
+  // סינון הנתונים ב-Vector DB כך שיתאימו אך ורק לפרויקט/מכרז המבוקש (מניעת ערבוב מסמכים!)
+  const filteredChunks = vectorStore.data.filter(
+    item => item.metadata?.projectId?.toString() === projectId?.toString()
+  );
+  
+  // חיפוש ודירוג סמנטי מקומי
+  const results = filteredChunks.map(item => {
+    const dotProduct = item.embedding.reduce((sum, val, i) => sum + val * queryEmbedding[i], 0);
+    const mag1 = Math.sqrt(item.embedding.reduce((sum, val) => sum + val * val, 0));
+    const mag2 = Math.sqrt(queryEmbedding.reduce((sum, val) => sum + val * val, 0));
+    return { ...item, score: dotProduct / (mag1 * mag2) };
+  });
+  
+  const matches = results.sort((a, b) => b.score - a.score).slice(0, 5);
   const context = matches.map(m => m.text).join('\n---\n');
   
   try {
