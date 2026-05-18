@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/server';
-import Anthropic from '@anthropic-ai/sdk';
 import db from './db.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -45,6 +44,32 @@ const getGeminiClients = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
   return { genAI: new GoogleGenerativeAI(apiKey), fileManager: new GoogleAIFileManager(apiKey) };
+};
+
+const GEMINI_FLASH_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+const GEMINI_PRO_CHAIN = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+
+const generateContentWithFallback = async (genAI, modelChain, promptOrContent, timeoutMs = 45000) => {
+  let lastError = null;
+  for (const modelName of modelChain) {
+    try {
+      console.log(`🤖 Attempting Gemini model: ${modelName}...`);
+      const model = genAI.getGenerativeModel({ model: modelName });
+      
+      const callPromise = model.generateContent(promptOrContent);
+      const result = await Promise.race([
+        callPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout on model ${modelName}`)), timeoutMs))
+      ]);
+      
+      console.log(`✅ Success with Gemini model: ${modelName}`);
+      return result;
+    } catch (err) {
+      console.warn(`⚠️ Gemini model ${modelName} failed:`, err.message);
+      lastError = err;
+    }
+  }
+  throw new Error(`כל שירותי הבינה המלאכותית של גוגל נכשלו: ${lastError?.message}`);
 };
 
 async function getEmbeddings(text) {
@@ -111,8 +136,6 @@ export const ingestDocument = async (projectId, filePath, mimeType = "applicatio
   }
 };
 
-// ניתוח דו-שלבי: שלב 1 מהיר (Gemini Flash ~1.5 שניות) → שלב 2 עמוק (Gemini Pro/Flash ~10 שניות)
-// המשתמש רואה תוצאה ראשונית מהר, ואז התוצאה מתעדכנת לעומק
 export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
   updateLiveStatus(tenderId, "קורא את מסמך המכרז...");
   
@@ -131,17 +154,16 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
     try {
       const { genAI } = getGeminiClients();
 
-      // --- שלב 1: ניתוח מהיר עם gemini-2.5-flash ---
+      // --- שלב 1: ניתוח מהיר עם שרשרת גיבוי של גוגל ג'מיני ---
       updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח (ג'מיני)...");
       let quickAnalysis = null;
       try {
-        const modelFlash = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const quickPrompt = `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים. 3-5 נקודות קצרות בלבד. ענה בעברית.
+        const quickPrompt = `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים, ושלבי ביצוע מרכזיים. 3-5 נקודות קצרות וברורות בלבד שיוצגו ללקוח. ענה בעברית.
 [CONFIDENCE]70[/CONFIDENCE]
 
 מסמך:
 ${shortText}`;
-        const quickResult = await modelFlash.generateContent(quickPrompt);
+        const quickResult = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, quickPrompt, 15000);
         quickAnalysis = quickResult.response.text();
         if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
         updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט (ג'מיני)...");
@@ -152,8 +174,8 @@ ${shortText}`;
 
       // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
       try {
-        const modelDeep = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+חובה לכלול פרק מיוחד ומורחב בשם "שלבי הביצוע להנגשה ללקוח" המתרגם את המכרז לשלבי עבודה פשוטים, ברורים ומסודרים שיוצגו ישירות ללקוח הקצה.
 חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
 בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
@@ -164,7 +186,7 @@ ${shortText}`;
 מסמך המכרז:
 ${fullText}`;
 
-        const deepResult = await modelDeep.generateContent(geminiPrompt);
+        const deepResult = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, geminiPrompt, 45000);
         const rawText = deepResult.response.text();
 
         let boq_json = null;
@@ -188,54 +210,11 @@ ${fullText}`;
         throw geminiDeepErr;
       }
     } catch (geminiGeneralErr) {
-      console.warn('Gemini analysis failed completely, falling back to Claude:', geminiGeneralErr.message);
+      console.warn('Gemini analysis failed completely:', geminiGeneralErr.message);
+      throw new Error(`כל שירותי הבינה המלאכותית של גוגל נכשלו בניתוח המסמך: ${geminiGeneralErr.message}`);
     }
   } else {
-    console.log('GEMINI_API_KEY is not defined, skipping to Claude fallback.');
-  }
-
-  // --- אנתרופיק קלוד כגיבוי (Fallback Engine) ---
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim() !== "") {
-    updateLiveStatus(tenderId, "מנתח באמצעות קלוד...");
-    try {
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const prompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
-חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
-
-בנוסף, חובה לכלול בלוק JSON של אומדן כתב כמויות ראשוני לפי המכרז (מחירי שוק סבירים בישראל):
-\`\`\`json
-[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
-\`\`\`
-
-מסמך המכרז:
-${fullText}`;
-
-      const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 3500,
-        messages: [{ role: "user", content: prompt }]
-      });
-
-      const rawText = response.content[0].text;
-      let boq_json = null;
-      const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch) {
-        try {
-          JSON.parse(jsonMatch[1].trim());
-          boq_json = jsonMatch[1].trim();
-        } catch (e) { console.warn('BoQ JSON parse failed in Claude fallback:', e.message); }
-      }
-      const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
-
-      updateLiveStatus(tenderId, "ניתוח הושלם (קלוד)");
-      if (onPhaseOneComplete) onPhaseOneComplete(analysis);
-      return { analysis, boq_json };
-    } catch (claudeErr) {
-      console.error('Both Gemini and Claude failed to analyze tender:', claudeErr);
-      throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: ${claudeErr.message}`);
-    }
-  } else {
-    throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: Missing GEMINI_API_KEY and ANTHROPIC_API_KEY`);
+    throw new Error(`כל שירותי הבינה המלאכותית נכשלו בניתוח המסמך: Missing GEMINI_API_KEY`);
   }
 };
 
@@ -250,7 +229,6 @@ export const generateProposal = async (filePath, tenderId) => {
   }
   const truncatedText = pdfText.slice(0, 12000);
 
-  // --- גוגל ג'מיני כספק ראשי (Primary Engine) ---
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "") {
     try {
       updateLiveStatus(tenderId, "מתחבר למאגר המחירים ההיסטורי (ג'מיני)...");
@@ -270,18 +248,15 @@ ${truncatedText}
 דרישות:
 1. הכן כתב כמויות (BoQ) מפורט
 2. השתמש במחירי יחידה מהיסטוריית המחירים שלנו
-3. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
-4. חובה לכלול בלוק JSON במבנה הזה:
+3. חובה לכלול פרק מיוחד ומסודר בשם "שלבי ביצוע להצגה ללקוח" המפרט בצורה מונגשת, פשוטה וברורה לקורא הלא-מקצועי את שלבי העבודה השונים, כדי שנוכל להציג לו את זה בבהירות.
+4. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
+5. חובה לכלול בלוק JSON במבנה הזה:
 \`\`\`json
 [{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
 \`\`\``;
 
       const { genAI } = getGeminiClients();
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-      const result = await Promise.race([
-        model.generateContent(fallbackPrompt),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 30000))
-      ]);
+      const result = await generateContentWithFallback(genAI, GEMINI_PRO_CHAIN, fallbackPrompt, 45000);
 
       updateLiveStatus(tenderId, "הצעה מוכנה");
       const text = result.response.text();
@@ -292,58 +267,11 @@ ${truncatedText}
       }
       return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
     } catch (geminiErr) {
-      console.warn("Gemini failed for generateProposal, trying Claude fallback:", geminiErr.message);
+      console.warn("Gemini failed for generateProposal:", geminiErr.message);
+      throw new Error(`כל שירותי הבינה המלאכותית של גוגל נכשלו ביצירת ההצעה: ${geminiErr.message}`);
     }
   } else {
-    console.log('GEMINI_API_KEY is not defined, skipping to Claude fallback.');
-  }
-
-  // --- אנתרופיק קלוד כגיבוי (Fallback Engine) ---
-  if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim() !== "") {
-    try {
-      updateLiveStatus(tenderId, "מנסה שיטת גיבוי (קלוד)...");
-      const queryEmbedding = await getEmbeddings("מחירי יחידה, בנייה, כתב כמויות");
-      const matches = await vectorStore.search(queryEmbedding, 8);
-      const context = matches.length > 0 ? matches.map(m => m.text).join('\n---\n') : "אין היסטוריית מחירים זמינה";
-
-      const prompt = `בהתבסס על מסמך המכרז ועל היסטוריית המחירים שלנו, הכן הצעת מחיר מפורטת בעברית.
-      
-היסטוריית מחירים:
-${context}
-
-מסמך המכרז:
-${truncatedText}
-
-דרישות:
-1. הכן כתב כמויות (BoQ) מפורט
-2. השתמש במחירי יחידה מהיסטוריית המחירים שלנו
-3. חובה לסיים עם [CONFIDENCE]XX[/CONFIDENCE]
-4. חובה לכלול בלוק JSON במבנה הזה:
-\`\`\`json
-[{"id":1,"section":"שם סעיף","item":"תיאור פריט","quantity":100,"unit":"מ\"ר","unitPrice":150}]
-\`\`\``;
-
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 3000,
-        messages: [{ role: "user", content: prompt }]
-      });
-
-      updateLiveStatus(tenderId, "הצעה מוכנה (קלוד)");
-      const text = response.content[0].text;
-      let boq_json = null;
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch) {
-        try { boq_json = jsonMatch[1].trim(); } catch (e) {}
-      }
-      return { proposal: text.replace(jsonMatch?.[0] || '', '').trim(), boq_json };
-    } catch (claudeErr) {
-      console.error("Both Gemini and Claude failed for proposal:", claudeErr.message);
-      throw claudeErr;
-    }
-  } else {
-    throw new Error("Both Gemini and Claude failed to generate proposal: Missing credentials");
+    throw new Error("Missing GEMINI_API_KEY");
   }
 };
 
@@ -354,25 +282,12 @@ export const askQuestion = async (projectId, question) => {
   
   try {
     const { genAI } = getGeminiClients();
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(`ענה על: ${question}. הקשר: ${context}. ענה בעברית. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] המייצגת את רמת הוודאות שלך בתשובה (מ-1 עד 100).`);
+    const prompt = `ענה על: ${question}. הקשר: ${context}. ענה בעברית. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] המייצגת את רמת הוודאות שלך בתשובה (מ-1 עד 100).`;
+    const result = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, prompt, 20000);
     return result.response.text();
   } catch (err) {
-    console.warn("Gemini failed, falling back to Claude for askQuestion:", err);
-    try {
-      if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.trim() === "") {
-        throw new Error("Missing ANTHROPIC_API_KEY");
-      }
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: `ענה על: ${question}. הקשר: ${context}. ענה בעברית. חובה לסיים את התשובה עם תגית ביטחון בפורמט הזה בדיוק: [CONFIDENCE]XX[/CONFIDENCE] המייצגת את רמת הוודאות שלך בתשובה (מ-1 עד 100).` }]
-      });
-      return response.content[0].text;
-    } catch (claudeErr) {
-      throw claudeErr;
-    }
+    console.error("Gemini failed for askQuestion:", err);
+    throw err;
   }
 };
 
