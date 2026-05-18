@@ -20,8 +20,16 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
     try {
-      // מולטר מפענח שמות קבצים כ-latin1 כברירת מחדל. אנחנו ממירים את התווים חזרה לבאפר בינארי ומפענחים כ-UTF-8 כדי לשחזר עברית תקינה!
-      file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      // אם שם הקובץ כבר מכיל עברית תקינה (פוענח בהצלחה על ידי הדפדפן/השרת), לא נוגעים בו!
+      const hasHebrew = /[\u0590-\u05FF]/.test(file.originalname);
+      if (!hasHebrew) {
+        // במידה ולא זוהתה עברית, ייתכן ומדובר בקידוד משובש (Mojibake). ננסה לפענח מ-latin1 ל-utf8.
+        const decoded = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        // נעדכן את שם הקובץ רק אם הפיענוח אכן הניב תווים בעברית
+        if (/[\u0590-\u05FF]/.test(decoded)) {
+          file.originalname = decoded;
+        }
+      }
     } catch (e) {
       console.error('שגיאה בפענוח שם הקובץ מעברית:', e.message);
     }
