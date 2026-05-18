@@ -9,7 +9,7 @@ import './seed.js';
 import { ingestDocument, askQuestion, analyzeReceipt, analyzeTender, generateProposal, vectorStore, VECTOR_DB_PATH } from './ai.js';
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3001;
 const root = process.cwd();
 
 // שימוש ב-/tmp לכתיבה בענן (Cloud Run)
