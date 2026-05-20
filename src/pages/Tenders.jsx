@@ -253,18 +253,30 @@ export default function Tenders() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* כותרת הדף וכפתור העלאה */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">ניהול מכרזים חכם</h1>
-          <p className="text-text-secondary">ניתוח מכרזים והפקת הצעות מחיר מבוססות בינה מלאכותית</p>
+      {/* כפתור חזרה וכותרת הדף */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center">
+          <Link 
+            to="/" 
+            className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all font-bold text-xs"
+          >
+            <ChevronRight className="w-4 h-4" />
+            <span>חזרה לפרויקטים</span>
+          </Link>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-xl hover:bg-[var(--color-brand-dark)] transition-all cursor-pointer shadow-sm">
-            <Upload className="w-4 h-4" />
-            <span className="font-medium text-sm">העלאת מכרז חדש</span>
-            <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={uploading} />
-          </label>
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary">ניהול מכרזים חכם</h1>
+            <p className="text-text-secondary text-sm">ניתוח מכרזים והפקת הצעות מחיר מבוססות בינה מלאכותית</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-brand)] text-white rounded-xl hover:bg-[var(--color-brand-dark)] transition-all cursor-pointer shadow-sm">
+              <Upload className="w-4 h-4" />
+              <span className="font-medium text-sm">העלאת מכרז חדש</span>
+              <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+            </label>
+          </div>
         </div>
       </div>
 
