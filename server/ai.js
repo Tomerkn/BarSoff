@@ -46,8 +46,8 @@ const getGeminiClients = () => {
   return { genAI: new GoogleGenerativeAI(apiKey), fileManager: new GoogleAIFileManager(apiKey) };
 };
 
-const GEMINI_FLASH_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
-const GEMINI_PRO_CHAIN = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite'];
+const GEMINI_FLASH_CHAIN = ['gemini-2.0-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-pro'];
+const GEMINI_PRO_CHAIN = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro', 'gemini-3.5-flash'];
 
 const generateContentWithFallback = async (genAI, modelChain, promptOrContent, timeoutMs = 45000) => {
   let lastError = null;
@@ -169,27 +169,28 @@ export const analyzeTender = async (filePath, tenderId, onPhaseOneComplete) => {
     try {
       const { genAI } = getGeminiClients();
 
-      // --- שלב 1: ניתוח מהיר עם שרשרת גיבוי של גוגל ג'מיני ---
-      updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח (ג'מיני)...");
-      let quickAnalysis = null;
-      try {
-        const quickPrompt = `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים, ושלבי ביצוע מרכזיים. 3-5 נקודות קצרות וברורות בלבד שיוצגו ללקוח. ענה בעברית.
+      // --- הפעלה במקביל של שני השלבים לקיצור משמעותי בזמן ההמתנה! ---
+      const phaseOnePromise = (async () => {
+        updateLiveStatus(tenderId, "שלב 1/2: ניתוח מהיר של נקודות מפתח (ג'מיני)...");
+        try {
+          const quickPrompt = `נתח בקצרה את המכרז הבא - תנאי סף, לוחות זמנים, קנסות עיקריים, ושלבי ביצוע מרכזיים. 3-5 נקודות קצרות וברורות בלבד שיוצגו ללקוח. ענה בעברית.
 [CONFIDENCE]70[/CONFIDENCE]
 
 מסמך:
 ${shortText}`;
-        const quickResult = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, quickPrompt, 15000);
-        quickAnalysis = quickResult.response.text();
-        if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
-        updateLiveStatus(tenderId, "שלב 2/2: ניתוח מעמיק ומפורט (ג'מיני)...");
-      } catch (e) {
-        console.warn('Gemini Phase 1 quick analysis failed:', e.message);
-        updateLiveStatus(tenderId, "מנתח את המכרז (ג'מיני)...");
-      }
+          const quickResult = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, quickPrompt, 15000);
+          const quickAnalysis = quickResult.response.text();
+          if (onPhaseOneComplete) onPhaseOneComplete(quickAnalysis);
+          return quickAnalysis;
+        } catch (e) {
+          console.warn('Gemini Phase 1 quick analysis failed:', e.message);
+          return null;
+        }
+      })();
 
-      // --- שלב 2: ניתוח עמוק + חילוץ כתב כמויות ראשוני ---
-      try {
-        const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
+      const phaseTwoPromise = (async () => {
+        try {
+          const geminiPrompt = `נתח את מסמך המכרז הבא לעומק בעברית. התייחס ל: תנאי סף, לוחות זמנים, קנסות, ערבויות, ודרישות ביטוח.
 חובה לכלול פרק מיוחד ומורחב בשם "שלבי הביצוע להנגשה ללקוח" המתרגם את המכרז לשלבי עבודה פשוטים, ברורים ומסודרים שיוצגו ישירות ללקוח הקצה.
 חובה לסיים את התשובה עם תגית ביטחון: [CONFIDENCE]XX[/CONFIDENCE] (מספר מ-1 עד 100).
 
@@ -201,23 +202,32 @@ ${shortText}`;
 מסמך המכרז:
 ${fullText}`;
 
-        const deepResult = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, geminiPrompt, 45000);
-        const rawText = deepResult.response.text();
+          const deepResult = await generateContentWithFallback(genAI, GEMINI_FLASH_CHAIN, geminiPrompt, 45000);
+          const rawText = deepResult.response.text();
 
-        let boq_json = null;
-        const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
-        if (jsonMatch) {
-          try {
-            JSON.parse(jsonMatch[1].trim());
-            boq_json = jsonMatch[1].trim();
-          } catch (e) { console.warn('BoQ JSON parse failed in Gemini analysis:', e.message); }
+          let boq_json = null;
+          const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch) {
+            try {
+              JSON.parse(jsonMatch[1].trim());
+              boq_json = jsonMatch[1].trim();
+            } catch (e) { console.warn('BoQ JSON parse failed in Gemini analysis:', e.message); }
+          }
+          const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
+          return { analysis, boq_json };
+        } catch (geminiDeepErr) {
+          console.warn('Gemini Phase 2 deep analysis failed:', geminiDeepErr.message);
+          throw geminiDeepErr;
         }
-        const analysis = rawText.replace(jsonMatch?.[0] || '', '').trim();
+      })();
 
+      try {
+        const deepResult = await phaseTwoPromise;
         updateLiveStatus(tenderId, "ניתוח הושלם");
-        return { analysis, boq_json };
+        return deepResult;
       } catch (geminiDeepErr) {
         console.warn('Gemini Phase 2 deep analysis failed, returning phase 1 result:', geminiDeepErr.message);
+        const quickAnalysis = await phaseOnePromise;
         if (quickAnalysis) {
           updateLiveStatus(tenderId, "ניתוח הושלם (מהיר)");
           return { analysis: quickAnalysis, boq_json: null };
