@@ -64,7 +64,7 @@ const renderCleanContentWithTables = (text) => {
   const flushTextBuffer = (key) => {
     if (textBuffer.length > 0) {
       elements.push(
-        <div key={`text-${key}`} className="whitespace-pre-wrap leading-relaxed text-sm text-slate-600">
+        <div key={`text-${key}`} className="whitespace-pre-wrap leading-relaxed text-sm text-slate-600 text-right">
           {textBuffer.join('\n')}
         </div>
       );
@@ -252,9 +252,9 @@ export default function Tenders() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 flex flex-col gap-6 w-full max-w-[1600px] mx-auto h-[calc(100vh-4rem)] overflow-hidden">
       {/* כפתור חזרה וכותרת הדף */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 shrink-0">
         <div className="flex items-center">
           <Link 
             to="/" 
@@ -282,7 +282,7 @@ export default function Tenders() {
 
       {/* באנר הצלחה על העברה לפרויקט */}
       {newProjectLink && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300 shadow-sm">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300 shadow-sm shrink-0">
           <div className="flex items-start gap-3">
             <CheckCircle className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
             <div>
@@ -300,17 +300,17 @@ export default function Tenders() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
         {/* צד ימין: רשימת המכרזים האחרונים */}
-        <div className="lg:col-span-1 space-y-4">
-          <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+        <div className="xl:col-span-1 lg:col-span-1 flex flex-col h-full overflow-hidden">
+          <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-sm flex flex-col h-full">
+            <div className="p-4 border-b border-border bg-slate-50/50 flex items-center justify-between shrink-0">
               <h2 className="font-bold flex items-center gap-2">
                 <FileSearch className="w-4 h-4 text-[var(--color-brand)]" />
                 מכרזים אחרונים
               </h2>
             </div>
-            <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+            <div className="divide-y divide-border overflow-y-auto flex-1">
               {tenders.map((tender) => (
                 <button
                   key={tender.id}
@@ -343,11 +343,11 @@ export default function Tenders() {
         </div>
 
         {/* צד שמאל: תצוגת התוכן (ניתוח והצעת מחיר) */}
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-3 lg:col-span-2 h-full overflow-hidden">
           {selectedTender ? (
-            <div className="bg-surface border border-border rounded-2xl shadow-sm h-full flex flex-col">
+            <div className="bg-surface border border-border rounded-2xl shadow-sm h-full flex flex-col overflow-hidden">
               {/* כותרת המכרז הנבחר */}
-              <div className="p-6 border-b border-border flex items-center justify-between bg-slate-50/30">
+              <div className="p-6 border-b border-border flex items-center justify-between bg-slate-50/30 shrink-0">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-white rounded-xl shadow-sm border border-border">
                     <FileText className="w-6 h-6 text-[var(--color-brand)]" />
@@ -402,7 +402,7 @@ export default function Tenders() {
                     <Search className="w-5 h-5 text-blue-500" />
                     ניתוח מכרז חכם
                   </h3>
-                  <div className="prose prose-sm max-w-none text-text-primary bg-blue-50/30 p-4 rounded-xl border border-blue-100 leading-relaxed whitespace-pre-wrap relative">
+                  <div className="prose prose-sm max-w-none text-right text-text-primary bg-blue-50/30 p-4 rounded-xl border border-blue-100 leading-relaxed whitespace-pre-wrap relative">
                     {selectedTender.analysis ? (
                       <>
                         {/* באנר שלב 1 - מוצג כשהניתוח העמוק עדיין רץ */}
@@ -534,7 +534,7 @@ export default function Tenders() {
                               </div>
                             </div>
                           )}
-                          <div className="prose prose-sm max-w-none text-text-primary whitespace-pre-wrap leading-relaxed">
+                          <div className="prose prose-sm max-w-none text-right text-text-primary whitespace-pre-wrap leading-relaxed">
                             {renderCleanContentWithTables(selectedTender.proposal)}
                           </div>
                         </div>
