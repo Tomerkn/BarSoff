@@ -322,7 +322,60 @@ export const askQuestion = async (projectId, question) => {
   });
   
   const matches = results.sort((a, b) => b.score - a.score).slice(0, 5);
-  const context = matches.map(m => m.text).join('\n---\n');
+  let context = matches.map(m => m.text).join('\n---\n');
+
+  // שליפת מידע מיוחד ממסד הנתונים עבור פרויקטים ומכרזים (שם, ניתוח חכם, הצעה, כתב כמויות)
+  let extraDbInfo = '';
+  try {
+    if (projectId && projectId.toString().startsWith('tender-')) {
+      const tenderId = Number(projectId.toString().replace('tender-', ''));
+      const tender = db.prepare('SELECT name, analysis, proposal, boq_json FROM tenders WHERE id = ?').get(tenderId);
+      if (tender) {
+        extraDbInfo = `
+=== מידע על המכרז מתוך המערכת ===
+שם המכרז: ${tender.name || ''}
+
+ניתוח מכרז חכם שיוצר עבורו:
+${tender.analysis || 'טרם נותח'}
+
+הצעת מחיר / אומדן שיוצרו עבורו:
+${tender.proposal || 'טרם הופקה הצעה'}
+
+כתב כמויות דינמי (BoQ JSON):
+${tender.boq_json || ''}
+=================================
+`;
+      }
+    } else if (projectId) {
+      const pId = Number(projectId);
+      if (!isNaN(pId)) {
+        const project = db.prepare('SELECT name, analysis, proposal, boq_json FROM projects WHERE id = ?').get(pId);
+        if (project) {
+          extraDbInfo = `
+=== מידע על הפרויקט מתוך המערכת ===
+שם הפרויקט: ${project.name || ''}
+
+ניתוח המכרז המשויך לפרויקט:
+${project.analysis || ''}
+
+הצעת מחיר / אומדן המשויך לפרויקט:
+${project.proposal || ''}
+
+כתב כמויות של הפרויקט (BoQ JSON):
+${project.boq_json || ''}
+==================================
+`;
+        }
+      }
+    }
+  } catch (dbErr) {
+    console.error("Failed to fetch database context for askQuestion:", dbErr);
+  }
+
+  // שילוב המידע ממסד הנתונים בהקשר ל-AI
+  if (extraDbInfo) {
+    context = `${extraDbInfo}\n\n=== קטעים רלוונטיים ממסמכי המקור ===\n${context}`;
+  }
   
   try {
     const { genAI } = getGeminiClients();
